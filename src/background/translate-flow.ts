@@ -61,9 +61,7 @@ export async function translateActiveTab(
 
   const images = (detected.images ?? []).map((image) => ({
     ...image,
-    ...(image.pageUrl || !detected.pageUrl
-      ? {}
-      : { pageUrl: detected.pageUrl })
+    ...(image.pageUrl || !detected.pageUrl ? {} : { pageUrl: detected.pageUrl })
   }));
 
   if (images.length === 0) {

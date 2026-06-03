@@ -59,13 +59,19 @@ function PopupApp() {
           setStatus("Creating job");
           void chrome.runtime
             .sendMessage(createTranslateActiveTabMessage())
-            .then((result: { error?: string; imageCount?: number; ok?: boolean }) => {
-              setStatus(
-                result.ok
-                  ? `Created job from ${result.imageCount ?? 0} images`
-                  : result.error ?? "Translation failed"
-              );
-            })
+            .then(
+              (result: {
+                error?: string;
+                imageCount?: number;
+                ok?: boolean;
+              }) => {
+                setStatus(
+                  result.ok
+                    ? `Created job from ${result.imageCount ?? 0} images`
+                    : (result.error ?? "Translation failed")
+                );
+              }
+            )
             .catch(() => setStatus("Translation failed"));
         }}
       >

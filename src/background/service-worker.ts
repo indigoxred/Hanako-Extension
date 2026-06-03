@@ -61,8 +61,7 @@ async function translateContextMenuImage(
 }
 
 async function detectImagesInActiveTab(): Promise<
-  | { ok: true; imageCount: number }
-  | { ok: false; error: string }
+  { ok: true; imageCount: number } | { ok: false; error: string }
 > {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 

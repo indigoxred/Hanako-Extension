@@ -86,7 +86,9 @@ async function postExtensionJob(input: {
   );
 
   if (!response.ok) {
-    throw new Error(`Hanako extension job request failed with ${response.status}`);
+    throw new Error(
+      `Hanako extension job request failed with ${response.status}`
+    );
   }
 
   return (await response.json()) as ExtensionJobDetail;

@@ -39,9 +39,7 @@ describe("Hanako extension client", () => {
     const result = await translateImage({
       baseUrl: "http://hanako.test/",
       fetch: async (input, init) => {
-        expect(input).toBe(
-          "http://hanako.test/api/extension/translate-image"
-        );
+        expect(input).toBe("http://hanako.test/api/extension/translate-image");
         expect(init?.method).toBe("POST");
         expect(init?.headers).toEqual({ "content-type": "application/json" });
         expect(JSON.parse(String(init?.body))).toEqual({
