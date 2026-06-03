@@ -5,7 +5,9 @@ export interface DetectedImage {
   domIndex: number;
 }
 
-export function detectImages(documentRef: Document = document): DetectedImage[] {
+export function detectImages(
+  documentRef: Document = document
+): DetectedImage[] {
   return Array.from(documentRef.querySelectorAll("img"))
     .map((image, domIndex) => ({
       src: image.getAttribute("src") || image.currentSrc || image.src,
@@ -13,5 +15,8 @@ export function detectImages(documentRef: Document = document): DetectedImage[] 
       height: image.naturalHeight || image.height,
       domIndex
     }))
-    .filter((image) => image.src.length > 0 && image.width >= 120 && image.height >= 120);
+    .filter(
+      (image) =>
+        image.src.length > 0 && image.width >= 120 && image.height >= 120
+    );
 }

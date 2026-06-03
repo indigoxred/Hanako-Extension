@@ -9,7 +9,9 @@ describe("Hanako extension client", () => {
       baseUrl: "http://hanako.test",
       fetch: async (input) => {
         expect(input).toBe("http://hanako.test/healthz");
-        return new Response(JSON.stringify({ ok: true, service: "hanako-api" }));
+        return new Response(
+          JSON.stringify({ ok: true, service: "hanako-api" })
+        );
       }
     });
 

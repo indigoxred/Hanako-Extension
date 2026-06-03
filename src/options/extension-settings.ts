@@ -4,7 +4,9 @@ export interface ExtensionSettings {
 }
 
 export interface ExtensionStorageArea {
-  get(keys: string[] | Record<string, unknown>): Promise<Record<string, unknown>>;
+  get(
+    keys: string[] | Record<string, unknown>
+  ): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
 }
 
@@ -35,8 +37,11 @@ export async function saveExtensionSettings(
   settings: ExtensionSettings
 ): Promise<void> {
   await storage.set({
-    hanakoBaseUrl: settings.hanakoBaseUrl.trim() || DEFAULT_EXTENSION_SETTINGS.hanakoBaseUrl,
-    targetLanguage: settings.targetLanguage.trim() || DEFAULT_EXTENSION_SETTINGS.targetLanguage
+    hanakoBaseUrl:
+      settings.hanakoBaseUrl.trim() || DEFAULT_EXTENSION_SETTINGS.hanakoBaseUrl,
+    targetLanguage:
+      settings.targetLanguage.trim() ||
+      DEFAULT_EXTENSION_SETTINGS.targetLanguage
   });
 }
 

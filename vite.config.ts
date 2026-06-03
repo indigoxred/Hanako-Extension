@@ -18,16 +18,19 @@ function manifestPlugin(): Plugin {
 }
 
 export default defineConfig({
+  root: "src",
   plugins: [react(), manifestPlugin()],
   build: {
-    outDir: "dist",
+    outDir: "../dist",
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        "background/service-worker": "src/background/service-worker.ts",
-        "content/content-entry": "src/content/content-entry.ts",
-        "options/options": "src/options/options.html",
-        "popup/popup": "src/popup/popup.html"
+        "background/service-worker": resolve(
+          "src/background/service-worker.ts"
+        ),
+        "content/content-entry": resolve("src/content/content-entry.ts"),
+        "options/options": resolve("src/options/options.html"),
+        "popup/popup": resolve("src/popup/popup.html")
       },
       output: {
         entryFileNames: "[name].js",

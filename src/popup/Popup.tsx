@@ -19,7 +19,9 @@ function PopupApp() {
     void loadExtensionSettings()
       .then(async (loaded) => {
         setSettings(loaded);
-        const ok = await checkHanakoConnection({ baseUrl: loaded.hanakoBaseUrl });
+        const ok = await checkHanakoConnection({
+          baseUrl: loaded.hanakoBaseUrl
+        });
         setStatus(ok ? "Ready" : "Unavailable");
       })
       .catch(() => setStatus("Unavailable"));

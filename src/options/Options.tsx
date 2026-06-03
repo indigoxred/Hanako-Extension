@@ -21,7 +21,9 @@ function OptionsApp() {
         setSettings(loaded);
         setStatus("");
       })
-      .catch((error) => setStatus(error instanceof Error ? error.message : "Load failed"));
+      .catch((error) =>
+        setStatus(error instanceof Error ? error.message : "Load failed")
+      );
   }, []);
 
   return (

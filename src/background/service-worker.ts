@@ -15,14 +15,16 @@ chrome.contextMenus.onClicked.addListener((info) => {
   });
 });
 
-chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
-  if (!isDetectActiveTabMessage(message)) {
-    return false;
-  }
+chrome.runtime.onMessage.addListener(
+  (message: unknown, _sender, sendResponse) => {
+    if (!isDetectActiveTabMessage(message)) {
+      return false;
+    }
 
-  void detectImagesInActiveTab().then((ok) => sendResponse({ ok }));
-  return true;
-});
+    void detectImagesInActiveTab().then((ok) => sendResponse({ ok }));
+    return true;
+  }
+);
 
 async function detectImagesInActiveTab(): Promise<boolean> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

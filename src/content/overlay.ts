@@ -2,7 +2,9 @@ export function showOverlay(
   message: string,
   documentRef: Document = document
 ): HTMLElement {
-  const existing = documentRef.querySelector<HTMLElement>("[data-hanako-overlay]");
+  const existing = documentRef.querySelector<HTMLElement>(
+    "[data-hanako-overlay]"
+  );
 
   if (existing) {
     existing.textContent = message;
