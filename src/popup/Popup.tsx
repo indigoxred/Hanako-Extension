@@ -7,7 +7,11 @@ import {
   loadExtensionSettings,
   type ExtensionSettings
 } from "../options/extension-settings.js";
-import { createOpenWebUiUrl } from "./popup-actions.js";
+import {
+  createDetectActiveTabMessage,
+  createOpenWebUiUrl,
+  createTranslateActiveTabMessage
+} from "./popup-actions.js";
 
 function PopupApp() {
   const [settings, setSettings] = useState<ExtensionSettings>(
@@ -34,10 +38,38 @@ function PopupApp() {
       <button
         type="button"
         onClick={() => {
-          void chrome.runtime.sendMessage({ type: "HANAKO_DETECT_ACTIVE_TAB" });
+          setStatus("Detecting");
+          void chrome.runtime
+            .sendMessage(createDetectActiveTabMessage())
+            .then((result: { imageCount?: number; ok?: boolean }) => {
+              setStatus(
+                result.ok
+                  ? `Found ${result.imageCount ?? 0} images`
+                  : "Detection failed"
+              );
+            })
+            .catch(() => setStatus("Detection failed"));
         }}
       >
         Detect manga images
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setStatus("Creating job");
+          void chrome.runtime
+            .sendMessage(createTranslateActiveTabMessage())
+            .then((result: { error?: string; imageCount?: number; ok?: boolean }) => {
+              setStatus(
+                result.ok
+                  ? `Created job from ${result.imageCount ?? 0} images`
+                  : result.error ?? "Translation failed"
+              );
+            })
+            .catch(() => setStatus("Translation failed"));
+        }}
+      >
+        Translate page
       </button>
       <a href={createOpenWebUiUrl(settings)} target="_blank" rel="noreferrer">
         Open WebUI
