@@ -5,10 +5,14 @@ export interface ExtensionHanakoClientOptions {
 
 export interface ExtensionImageCandidate {
   url: string;
+  bytesBase64?: string;
+  mediaType?: string;
+  name?: string;
   pageUrl?: string;
   width?: number;
   height?: number;
   domIndex?: number;
+  domId?: string;
 }
 
 export interface ExtensionJobDetail {
@@ -22,11 +26,13 @@ export interface ExtensionJobDetail {
 
 export interface TranslateImageInput extends ExtensionHanakoClientOptions {
   image: ExtensionImageCandidate;
+  mode?: "auto" | "review";
   targetLanguage: string;
 }
 
 export interface TranslatePageInput extends ExtensionHanakoClientOptions {
   images: ExtensionImageCandidate[];
+  mode?: "auto" | "review";
   targetLanguage: string;
 }
 
@@ -42,11 +48,12 @@ export async function translateImage({
   baseUrl,
   fetch: fetcher = fetch,
   image,
+  mode = "auto",
   targetLanguage
 }: TranslateImageInput): Promise<ExtensionJobDetail> {
   return postExtensionJob({
     baseUrl,
-    body: { image, targetLanguage },
+    body: { image, mode, targetLanguage },
     endpoint: "/api/extension/translate-image",
     fetch: fetcher
   });
@@ -56,11 +63,12 @@ export async function translatePage({
   baseUrl,
   fetch: fetcher = fetch,
   images,
+  mode = "auto",
   targetLanguage
 }: TranslatePageInput): Promise<ExtensionJobDetail> {
   return postExtensionJob({
     baseUrl,
-    body: { images, targetLanguage },
+    body: { images, mode, targetLanguage },
     endpoint: "/api/extension/translate-page",
     fetch: fetcher
   });

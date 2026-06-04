@@ -11,7 +11,36 @@ describe("detectImages", () => {
     `;
 
     expect(detectImages(document)).toEqual([
-      { src: "page.png", width: 640, height: 960, domIndex: 1 }
+      {
+        domId: expect.stringMatching(/^hanako-img-/),
+        domIndex: 1,
+        src: "http://localhost:3000/page.png",
+        width: 640,
+        height: 960
+      }
     ]);
+    expect(document.querySelectorAll("img")[1]?.dataset.hanakoDomId).toMatch(
+      /^hanako-img-/
+    );
+  });
+
+  it("prefers resolved currentSrc over raw relative src attributes", () => {
+    document.body.innerHTML = `
+      <img src="../relative/page.png" width="640" height="960">
+    `;
+    const image = document.querySelector("img");
+
+    if (!image) {
+      throw new Error("Expected test image");
+    }
+
+    Object.defineProperty(image, "currentSrc", {
+      configurable: true,
+      value: "https://cdn.example/chapter/page.png"
+    });
+
+    expect(detectImages(document)[0]).toMatchObject({
+      src: "https://cdn.example/chapter/page.png"
+    });
   });
 });

@@ -1,22 +1,24 @@
 import { createContextMenu, TRANSLATE_IMAGE_MENU_ID } from "./context-menu.js";
-import { translateImage } from "./hanako-client.js";
+import { translateContextMenuImage } from "./context-menu-flow.js";
 import { translateActiveTab } from "./translate-flow.js";
-import { loadExtensionSettings } from "../options/extension-settings.js";
-import {
-  createDetectImagesMessage,
-  createOpenJobUrl
-} from "../popup/popup-actions.js";
+import { createDetectImagesMessage } from "../popup/popup-actions.js";
 
 chrome.runtime.onInstalled.addListener(() => {
   createContextMenu(chrome);
 });
 
-chrome.contextMenus.onClicked.addListener((info) => {
+chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== TRANSLATE_IMAGE_MENU_ID) {
     return;
   }
 
-  void translateContextMenuImage(info);
+  void translateContextMenuImage({
+    context: {
+      ...(info.pageUrl ? { pageUrl: info.pageUrl } : {}),
+      ...(info.srcUrl ? { srcUrl: info.srcUrl } : {}),
+      ...(tab?.id ? { tabId: tab.id } : {})
+    }
+  });
 });
 
 chrome.runtime.onMessage.addListener(
@@ -34,31 +36,6 @@ chrome.runtime.onMessage.addListener(
     return false;
   }
 );
-
-async function translateContextMenuImage(
-  info: chrome.contextMenus.OnClickData
-): Promise<void> {
-  if (!info.srcUrl) {
-    return;
-  }
-
-  const settings = await loadExtensionSettings();
-  const detail = await translateImage({
-    baseUrl: settings.hanakoBaseUrl,
-    image: {
-      ...(info.pageUrl ? { pageUrl: info.pageUrl } : {}),
-      url: info.srcUrl
-    },
-    targetLanguage: settings.targetLanguage
-  });
-
-  await chrome.tabs.create({
-    url: createOpenJobUrl({
-      hanakoBaseUrl: settings.hanakoBaseUrl,
-      jobId: detail.job.id
-    })
-  });
-}
 
 async function detectImagesInActiveTab(): Promise<
   { ok: true; imageCount: number } | { ok: false; error: string }

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { translateActiveTab } from "../src/background/translate-flow.js";
 
 describe("extension translate flow", () => {
-  it("detects active-tab images, creates a page job, replaces rendered images, and opens the WebUI job", async () => {
+  it("detects active-tab images, creates a page job, replaces rendered images, and leaves WebUI opening optional", async () => {
     const calls: string[] = [];
     const openedUrls: string[] = [];
     const replacements: unknown[] = [];
@@ -22,6 +22,7 @@ describe("extension translate flow", () => {
           images: [
             {
               domIndex: 0,
+              domId: "hanako-img-1",
               height: 1200,
               pageUrl: "https://manga.example/chapter-1",
               url: "https://manga.example/page-1.png",
@@ -35,13 +36,23 @@ describe("extension translate flow", () => {
       executeContentScript: async (tabId) => {
         calls.push(`script:${tabId}`);
       },
+      fetchImageBytes: async (image) => {
+        expect(image.url).toBe("https://manga.example/page-1.png");
+        return {
+          bytesBase64: "cGFnZSAx",
+          mediaType: "image/png"
+        };
+      },
       translatePage: async (input) => {
         expect(input).toMatchObject({
           baseUrl: "http://localhost:8787/",
           images: [
             {
+              bytesBase64: "cGFnZSAx",
               domIndex: 0,
+              domId: "hanako-img-1",
               height: 1200,
+              mediaType: "image/png",
               pageUrl: "https://manga.example/chapter-1",
               url: "https://manga.example/page-1.png",
               width: 800
@@ -78,13 +89,14 @@ describe("extension translate flow", () => {
       status: "completed"
     });
     expect(calls).toEqual(["script:7", "message:7"]);
-    expect(openedUrls).toEqual(["http://localhost:8787/jobs/job_1"]);
+    expect(openedUrls).toEqual([]);
     expect(replacements).toEqual([
       {
         replacementInput: {
           replacements: [
             {
               domIndex: 0,
+              domId: "hanako-img-1",
               renderedUrl:
                 "http://localhost:8787/api/jobs/job_1/pages/page_1/rendered"
             }
@@ -103,6 +115,7 @@ describe("extension translate flow", () => {
         targetLanguage: "en"
       }),
       openTab: async () => undefined,
+      fetchImageBytes: async () => undefined,
       queryActiveTab: async () => ({ id: 7 }),
       sendDetectImagesMessage: async () => ({
         images: [{ domIndex: 0, url: "https://manga.example/page.png" }],
@@ -133,6 +146,7 @@ describe("extension translate flow", () => {
         targetLanguage: "en"
       }),
       openTab: async () => undefined,
+      fetchImageBytes: async () => undefined,
       queryActiveTab: async () => ({ id: 7 }),
       sendDetectImagesMessage: async () => ({
         images: [{ domIndex: 0, url: "https://manga.example/page.png" }],

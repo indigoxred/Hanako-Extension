@@ -10,11 +10,9 @@ import {
   type WaitForJobCompletionInput,
   type WaitForJobCompletionResult
 } from "./job-poller.js";
+import { withImageBytes, type FetchImageBytes } from "./image-bytes.js";
 import { loadExtensionSettings } from "../options/extension-settings.js";
-import {
-  createDetectImagesMessage,
-  createOpenJobUrl
-} from "../popup/popup-actions.js";
+import { createDetectImagesMessage } from "../popup/popup-actions.js";
 
 import type { ExtensionSettings } from "../options/extension-settings.js";
 
@@ -37,7 +35,8 @@ export type TranslateActiveTabResult =
 
 export interface ReplaceImagesMessageInput {
   replacements: Array<{
-    domIndex: number;
+    domIndex?: number;
+    domId?: string;
     renderedUrl: string;
   }>;
 }
@@ -49,6 +48,7 @@ export interface ReplaceImagesResponse {
 
 export interface TranslateActiveTabDependencies {
   executeContentScript?: (tabId: number) => Promise<void>;
+  fetchImageBytes?: FetchImageBytes;
   loadSettings?: () => Promise<ExtensionSettings>;
   openTab?: (url: string) => Promise<void>;
   queryActiveTab?: () => Promise<{ id?: number }>;
@@ -73,11 +73,11 @@ export async function translateActiveTab(
     dependencies.sendDetectImagesMessage ?? defaultSendDetectImagesMessage;
   const sendReplaceImagesMessage =
     dependencies.sendReplaceImagesMessage ?? defaultSendReplaceImagesMessage;
+  const fetchImageBytes = dependencies.fetchImageBytes;
   const loadSettings = dependencies.loadSettings ?? loadExtensionSettings;
   const translatePage = dependencies.translatePage ?? defaultTranslatePage;
   const waitForJobCompletion =
     dependencies.waitForJobCompletion ?? defaultWaitForJobCompletion;
-  const openTab = dependencies.openTab ?? defaultOpenTab;
   const tab = await queryActiveTab();
 
   if (!tab.id) {
@@ -104,18 +104,14 @@ export async function translateActiveTab(
   }
 
   const settings = await loadSettings();
+  const uploadImages = await Promise.all(
+    images.map((image) => withImageBytes(image, fetchImageBytes))
+  );
   const detail = await translatePage({
     baseUrl: settings.hanakoBaseUrl,
-    images,
+    images: uploadImages,
     targetLanguage: settings.targetLanguage
   });
-
-  await openTab(
-    createOpenJobUrl({
-      hanakoBaseUrl: settings.hanakoBaseUrl,
-      jobId: detail.job.id
-    })
-  );
 
   const completed = await waitForJobCompletion({
     baseUrl: settings.hanakoBaseUrl,
@@ -143,7 +139,7 @@ export async function translateActiveTab(
 
   const replacements = buildReplacementInstructions({
     baseUrl: settings.hanakoBaseUrl,
-    images,
+    images: uploadImages,
     jobId: detail.job.id,
     pages: completed.detail.pages ?? []
   });
@@ -167,13 +163,17 @@ function buildReplacementInstructions(input: {
   return input.images.flatMap((image, index) => {
     const page = input.pages[index];
 
-    if (!page?.renderedAssetId || image.domIndex === undefined) {
+    if (
+      !page?.renderedAssetId ||
+      (image.domIndex === undefined && !image.domId)
+    ) {
       return [];
     }
 
     return [
       {
-        domIndex: image.domIndex,
+        ...(image.domIndex === undefined ? {} : { domIndex: image.domIndex }),
+        ...(image.domId ? { domId: image.domId } : {}),
         renderedUrl: createRenderedPageUrl({
           baseUrl: input.baseUrl,
           jobId: input.jobId,
@@ -213,8 +213,4 @@ async function defaultSendReplaceImagesMessage(
     ...input,
     type: "HANAKO_REPLACE_IMAGES"
   })) as ReplaceImagesResponse;
-}
-
-async function defaultOpenTab(url: string): Promise<void> {
-  await chrome.tabs.create({ url });
 }

@@ -1,11 +1,17 @@
 import { detectImages } from "./image-detector.js";
-import { replaceDetectedImages } from "./dom-replacer.js";
+import {
+  observeReplacementMutations,
+  replaceDetectedImages
+} from "./dom-replacer.js";
 import { showOverlay } from "./overlay.js";
+
+let replacementObserver: MutationObserver | undefined;
 
 chrome.runtime.onMessage.addListener(
   (message: unknown, _sender, sendResponse) => {
     if (isReplaceImagesMessage(message)) {
       const result = replaceDetectedImages(message.replacements);
+      replacementObserver ??= observeReplacementMutations();
       showOverlay(`Replaced ${result.replaced} translated images`);
       sendResponse({ ok: true, ...result });
       return true;
@@ -17,6 +23,7 @@ chrome.runtime.onMessage.addListener(
 
     const pageUrl = window.location.href;
     const images = detectImages().map((image) => ({
+      domId: image.domId,
       domIndex: image.domIndex,
       height: image.height,
       pageUrl,
@@ -39,7 +46,12 @@ function isDetectImagesMessage(message: unknown): message is { type: string } {
 }
 
 function isReplaceImagesMessage(message: unknown): message is {
-  replacements: Array<{ domIndex: number; renderedUrl: string }>;
+  replacements: Array<{
+    domIndex?: number;
+    domId?: string;
+    renderedUrl: string;
+    sourceUrl?: string;
+  }>;
   type: "HANAKO_REPLACE_IMAGES";
 } {
   return (

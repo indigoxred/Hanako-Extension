@@ -125,11 +125,14 @@ describe("Hanako extension client", () => {
         expect(init?.headers).toEqual({ "content-type": "application/json" });
         expect(JSON.parse(String(init?.body))).toEqual({
           image: {
+            bytesBase64: "cGFnZSAx",
             height: 1200,
+            mediaType: "image/png",
             pageUrl: "https://manga.example/chapter-1",
             url: "https://manga.example/page-1.png",
             width: 800
           },
+          mode: "auto",
           targetLanguage: "en"
         });
         return new Response(JSON.stringify({ job: { id: "job_1" } }), {
@@ -137,7 +140,9 @@ describe("Hanako extension client", () => {
         });
       },
       image: {
+        bytesBase64: "cGFnZSAx",
         height: 1200,
+        mediaType: "image/png",
         pageUrl: "https://manga.example/chapter-1",
         url: "https://manga.example/page-1.png",
         width: 800
@@ -157,13 +162,16 @@ describe("Hanako extension client", () => {
         expect(JSON.parse(String(init?.body))).toEqual({
           images: [
             {
+              bytesBase64: "cGFnZSAx",
               domIndex: 0,
               height: 1200,
+              mediaType: "image/png",
               pageUrl: "https://manga.example/chapter-1",
               url: "https://manga.example/page-1.png",
               width: 800
             }
           ],
+          mode: "auto",
           targetLanguage: "ja"
         });
         return new Response(JSON.stringify({ job: { id: "job_2" } }), {
@@ -172,8 +180,10 @@ describe("Hanako extension client", () => {
       },
       images: [
         {
+          bytesBase64: "cGFnZSAx",
           domIndex: 0,
           height: 1200,
+          mediaType: "image/png",
           pageUrl: "https://manga.example/chapter-1",
           url: "https://manga.example/page-1.png",
           width: 800
