@@ -21,7 +21,8 @@ export function replaceDetectedImages(
       continue;
     }
 
-    const currentSrc = image.getAttribute("src") || image.currentSrc || image.src;
+    const currentSrc =
+      image.getAttribute("src") || image.currentSrc || image.src;
     image.dataset.hanakoOriginalSrc =
       image.dataset.hanakoOriginalSrc || currentSrc;
     image.dataset.hanakoRenderedSrc = replacement.renderedUrl;

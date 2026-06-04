@@ -38,9 +38,7 @@ function isDetectImagesMessage(message: unknown): message is { type: string } {
   );
 }
 
-function isReplaceImagesMessage(
-  message: unknown
-): message is {
+function isReplaceImagesMessage(message: unknown): message is {
   replacements: Array<{ domIndex: number; renderedUrl: string }>;
   type: "HANAKO_REPLACE_IMAGES";
 } {
