@@ -63,8 +63,20 @@ function PopupApp() {
               (result: {
                 error?: string;
                 imageCount?: number;
+                replacementCount?: number;
                 ok?: boolean;
+                status?: "completed" | "failed" | "timeout";
               }) => {
+                if (result.ok && result.status === "completed") {
+                  setStatus(`Replaced ${result.replacementCount ?? 0} images`);
+                  return;
+                }
+
+                if (result.ok && result.status === "timeout") {
+                  setStatus("Job created; still processing");
+                  return;
+                }
+
                 setStatus(
                   result.ok
                     ? `Created job from ${result.imageCount ?? 0} images`
