@@ -1,13 +1,33 @@
 import { detectImages } from "./image-detector.js";
+import { replaceDetectedImages } from "./dom-replacer.js";
 import { showOverlay } from "./overlay.js";
 
-chrome.runtime.onMessage.addListener((message: unknown) => {
-  if (!isDetectImagesMessage(message)) {
-    return;
-  }
+chrome.runtime.onMessage.addListener(
+  (message: unknown, _sender, sendResponse) => {
+    if (isReplaceImagesMessage(message)) {
+      const result = replaceDetectedImages(message.replacements);
+      showOverlay(`Replaced ${result.replaced} translated images`);
+      sendResponse({ ok: true, ...result });
+      return true;
+    }
 
-  showOverlay(`Found ${detectImages().length} image candidates`);
-});
+    if (!isDetectImagesMessage(message)) {
+      return false;
+    }
+
+    const pageUrl = window.location.href;
+    const images = detectImages().map((image) => ({
+      domIndex: image.domIndex,
+      height: image.height,
+      pageUrl,
+      url: image.src,
+      width: image.width
+    }));
+    showOverlay(`Found ${images.length} image candidates`);
+    sendResponse({ images, ok: true, pageUrl });
+    return true;
+  }
+);
 
 function isDetectImagesMessage(message: unknown): message is { type: string } {
   return (
@@ -15,5 +35,19 @@ function isDetectImagesMessage(message: unknown): message is { type: string } {
     message !== null &&
     "type" in message &&
     message.type === "HANAKO_DETECT_IMAGES"
+  );
+}
+
+function isReplaceImagesMessage(message: unknown): message is {
+  replacements: Array<{ domIndex: number; renderedUrl: string }>;
+  type: "HANAKO_REPLACE_IMAGES";
+} {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    "type" in message &&
+    message.type === "HANAKO_REPLACE_IMAGES" &&
+    "replacements" in message &&
+    Array.isArray(message.replacements)
   );
 }
