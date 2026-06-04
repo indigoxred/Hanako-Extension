@@ -15,6 +15,13 @@ pnpm test
 The build output is written to `dist/`. Load that directory through Chromium's
 unpacked extension flow.
 
+## Release Packages
+
+Publishing a GitHub Release runs the `Release Chrome extension` workflow. It builds
+the extension, zips the `dist/` directory as `hanako-extension-chrome.zip`, and uploads
+that package to the release. The same workflow can be run manually against an existing
+release tag.
+
 ## Hanako Connection
 
 The extension defaults to `http://localhost:8787` and stores the configured
