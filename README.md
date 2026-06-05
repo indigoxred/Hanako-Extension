@@ -17,10 +17,11 @@ unpacked extension flow.
 
 ## Release Packages
 
-Publishing a GitHub Release runs the `Release Chrome extension` workflow. It builds
-the extension, zips the `dist/` directory as `hanako-extension-chrome.zip`, and uploads
-that package to the release. The same workflow can be run manually against an existing
-release tag.
+Every push to `main` runs the merged `CI and Release` workflow. After build,
+typecheck, lint, format, and tests pass, it zips the `dist/` directory as
+`hanako-extension-chrome.zip` and publishes a GitHub Release tagged with the commit
+short SHA, for example `sha-abc1234`. Pull requests run the same checks without
+publishing a release.
 
 ## Hanako Connection
 
@@ -40,4 +41,4 @@ Image forwarding prefers browser-side bytes:
   markers so replacement can survive relative URLs and reader DOM updates.
 
 CI runs build, typecheck, lint, format, and tests on pushes and pull requests to
-`main`.
+`main`; pushes to `main` also publish the Chrome extension release package.

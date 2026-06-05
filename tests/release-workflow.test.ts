@@ -5,18 +5,29 @@ import { describe, expect, it } from "vitest";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(testDir, "..");
-const workflowPath = resolve(repoRoot, ".github", "workflows", "release.yml");
+const ciWorkflowPath = resolve(repoRoot, ".github", "workflows", "ci.yml");
+const releaseWorkflowPath = resolve(
+  repoRoot,
+  ".github",
+  "workflows",
+  "release.yml"
+);
 
 describe("release workflow", () => {
-  it("builds and uploads a Chrome extension zip to GitHub Releases", () => {
-    expect(existsSync(workflowPath)).toBe(true);
+  it("publishes a Chrome extension release from the merged CI workflow", () => {
+    expect(existsSync(ciWorkflowPath)).toBe(true);
+    expect(existsSync(releaseWorkflowPath)).toBe(false);
 
-    const workflow = readFileSync(workflowPath, "utf8");
+    const workflow = readFileSync(ciWorkflowPath, "utf8");
 
-    expect(workflow).toContain("release:");
+    expect(workflow).toContain("push:");
+    expect(workflow).toContain("pull_request:");
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("pnpm build");
+    expect(workflow).toContain("pnpm test");
     expect(workflow).toContain("hanako-extension-chrome.zip");
-    expect(workflow).toContain("softprops/action-gh-release@v2");
+    expect(workflow).toContain('tag_name="sha-${short_sha}"');
+    expect(workflow).toContain("gh release create");
+    expect(workflow).toContain("github.event_name != 'pull_request'");
   });
 });

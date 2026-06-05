@@ -1,10 +1,14 @@
-name: CI
+name: CI and Release
 
 on:
   push:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   checks:
@@ -21,3 +25,25 @@ jobs:
       - run: pnpm lint
       - run: pnpm format
       - run: pnpm test
+      - name: Package Chrome extension
+        if: github.event_name != 'pull_request'
+        run: |
+          cd dist
+          zip -r ../hanako-extension-chrome.zip .
+      - name: Publish release for commit
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          tag_name="sha-${short_sha}"
+          release_title="Hanako Extension ${short_sha}"
+          release_notes="Automated Chrome extension build for ${GITHUB_SHA}."
+
+          if gh release view "${tag_name}" >/dev/null 2>&1; then
+            gh release upload "${tag_name}" hanako-extension-chrome.zip --clobber
+          else
+            gh release create "${tag_name}" hanako-extension-chrome.zip \
+              --title "${release_title}" \
+              --notes "${release_notes}"
+          fi
