@@ -70,4 +70,32 @@ describe("context menu translation flow", () => {
       }
     ]);
   });
+
+  it("fails before contacting Hanako when the clicked image bytes cannot be extracted", async () => {
+    const result = await translateContextMenuImage({
+      context: {
+        srcUrl: "https://pbs.twimg.com/media/HJ4cDDWbgAALVyK?format=jpg",
+        tabId: 12
+      },
+      fetchImageBytes: async () => undefined,
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      replaceImage: async () => {
+        throw new Error("Should not replace an image before a job exists");
+      },
+      translateImage: async () => {
+        throw new Error("Should not contact Hanako without image bytes");
+      },
+      waitForJobCompletion: async () => {
+        throw new Error("Should not poll without a job");
+      }
+    });
+
+    expect(result).toEqual({
+      error: "The extension could not extract bytes for this image",
+      ok: false
+    });
+  });
 });

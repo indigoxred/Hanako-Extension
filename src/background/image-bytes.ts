@@ -1,4 +1,5 @@
 import type { ExtensionImageCandidate } from "./hanako-client.js";
+import { browserFetch } from "./browser-fetch.js";
 
 export interface ImageBytesPayload {
   bytesBase64: string;
@@ -12,14 +13,14 @@ export type FetchImageBytes = (
 
 export async function fetchImageBytes(
   image: ExtensionImageCandidate,
-  fetcher: typeof fetch = fetch
+  fetcher: typeof fetch = browserFetch
 ): Promise<ImageBytesPayload | undefined> {
   if (!image.url || !isHttpUrl(image.url)) {
     return undefined;
   }
 
   const response = await fetcher(image.url, {
-    credentials: "include",
+    credentials: "omit",
     redirect: "follow"
   });
 
@@ -46,6 +47,19 @@ export async function withImageBytes(
 ): Promise<ExtensionImageCandidate> {
   const payload = await fetcher(image).catch(() => undefined);
   return payload ? { ...image, ...payload } : image;
+}
+
+export async function withRequiredImageBytes(
+  image: ExtensionImageCandidate,
+  fetcher: FetchImageBytes = fetchImageBytes
+): Promise<ExtensionImageCandidate> {
+  const payload = await fetcher(image).catch(() => undefined);
+
+  if (!payload) {
+    throw new Error("The extension could not extract bytes for this image");
+  }
+
+  return { ...image, ...payload };
 }
 
 function normalizeMediaType(contentType: string | null): string {

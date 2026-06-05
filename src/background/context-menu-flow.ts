@@ -4,7 +4,7 @@ import {
   type ExtensionJobDetail,
   type TranslateImageInput
 } from "./hanako-client.js";
-import { withImageBytes, type FetchImageBytes } from "./image-bytes.js";
+import { withRequiredImageBytes, type FetchImageBytes } from "./image-bytes.js";
 import {
   createRenderedPageUrl,
   waitForJobCompletion as defaultWaitForJobCompletion,
@@ -67,13 +67,26 @@ export async function translateContextMenuImage({
   }
 
   const settings = await loadSettings();
-  const image = await withImageBytes(
-    compactImageCandidate({
-      pageUrl: context.pageUrl,
-      url: context.srcUrl
-    }),
-    fetchImageBytes
-  );
+  let image: ExtensionImageCandidate;
+
+  try {
+    image = await withRequiredImageBytes(
+      compactImageCandidate({
+        pageUrl: context.pageUrl,
+        url: context.srcUrl
+      }),
+      fetchImageBytes
+    );
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "The extension could not extract bytes for this image",
+      ok: false
+    };
+  }
+
   const detail = await translateImage({
     baseUrl: settings.hanakoBaseUrl,
     image,

@@ -1,4 +1,5 @@
 import { normalizeBaseUrl } from "./hanako-client.js";
+import { browserFetch } from "./browser-fetch.js";
 
 export interface PollJobInput {
   jobId: string;
@@ -32,7 +33,7 @@ export type WaitForJobCompletionResult =
 
 export async function pollJobOnce({
   baseUrl,
-  fetch: fetcher = fetch,
+  fetch: fetcher = browserFetch,
   jobId
 }: PollJobInput): Promise<ExtensionJobPollDetail> {
   const response = await fetcher(
@@ -59,7 +60,7 @@ export function createRenderedPageUrl(input: {
 export async function waitForJobCompletion({
   baseUrl,
   delayMs = 2_000,
-  fetch: fetcher = fetch,
+  fetch: fetcher = browserFetch,
   jobId,
   maxAttempts = 60
 }: WaitForJobCompletionInput): Promise<WaitForJobCompletionResult> {

@@ -115,7 +115,10 @@ describe("extension translate flow", () => {
         targetLanguage: "en"
       }),
       openTab: async () => undefined,
-      fetchImageBytes: async () => undefined,
+      fetchImageBytes: async () => ({
+        bytesBase64: "cGFnZQ==",
+        mediaType: "image/png"
+      }),
       queryActiveTab: async () => ({ id: 7 }),
       sendDetectImagesMessage: async () => ({
         images: [{ domIndex: 0, url: "https://manga.example/page.png" }],
@@ -146,7 +149,10 @@ describe("extension translate flow", () => {
         targetLanguage: "en"
       }),
       openTab: async () => undefined,
-      fetchImageBytes: async () => undefined,
+      fetchImageBytes: async () => ({
+        bytesBase64: "cGFnZQ==",
+        mediaType: "image/png"
+      }),
       queryActiveTab: async () => ({ id: 7 }),
       sendDetectImagesMessage: async () => ({
         images: [{ domIndex: 0, url: "https://manga.example/page.png" }],
@@ -168,6 +174,36 @@ describe("extension translate flow", () => {
       jobId: "job_1",
       ok: false,
       status: "failed"
+    });
+  });
+
+  it("fails before contacting Hanako when active-tab image bytes cannot be extracted", async () => {
+    const result = await translateActiveTab({
+      executeContentScript: async () => undefined,
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      fetchImageBytes: async () => undefined,
+      queryActiveTab: async () => ({ id: 7 }),
+      sendDetectImagesMessage: async () => ({
+        images: [{ domIndex: 0, url: "https://manga.example/page.png" }],
+        ok: true
+      }),
+      sendReplaceImagesMessage: async () => {
+        throw new Error("Should not replace images before a job exists");
+      },
+      translatePage: async () => {
+        throw new Error("Should not contact Hanako without image bytes");
+      },
+      waitForJobCompletion: async () => {
+        throw new Error("Should not poll without a job");
+      }
+    });
+
+    expect(result).toEqual({
+      error: "The extension could not extract bytes for this image",
+      ok: false
     });
   });
 

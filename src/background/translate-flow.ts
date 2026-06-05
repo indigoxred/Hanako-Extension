@@ -10,7 +10,7 @@ import {
   type WaitForJobCompletionInput,
   type WaitForJobCompletionResult
 } from "./job-poller.js";
-import { withImageBytes, type FetchImageBytes } from "./image-bytes.js";
+import { withRequiredImageBytes, type FetchImageBytes } from "./image-bytes.js";
 import { loadExtensionSettings } from "../options/extension-settings.js";
 import { createDetectImagesMessage } from "../popup/popup-actions.js";
 
@@ -104,9 +104,22 @@ export async function translateActiveTab(
   }
 
   const settings = await loadSettings();
-  const uploadImages = await Promise.all(
-    images.map((image) => withImageBytes(image, fetchImageBytes))
-  );
+  let uploadImages: ExtensionImageCandidate[];
+
+  try {
+    uploadImages = await Promise.all(
+      images.map((image) => withRequiredImageBytes(image, fetchImageBytes))
+    );
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "The extension could not extract bytes for this image",
+      ok: false
+    };
+  }
+
   const detail = await translatePage({
     baseUrl: settings.hanakoBaseUrl,
     images: uploadImages,

@@ -129,7 +129,6 @@ describe("Hanako extension client", () => {
             height: 1200,
             mediaType: "image/png",
             pageUrl: "https://manga.example/chapter-1",
-            url: "https://manga.example/page-1.png",
             width: 800
           },
           mode: "auto",
@@ -167,7 +166,6 @@ describe("Hanako extension client", () => {
               height: 1200,
               mediaType: "image/png",
               pageUrl: "https://manga.example/chapter-1",
-              url: "https://manga.example/page-1.png",
               width: 800
             }
           ],
