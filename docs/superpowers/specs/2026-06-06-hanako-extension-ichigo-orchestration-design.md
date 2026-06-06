@@ -4,7 +4,7 @@
 
 Make Hanako-Extension feel like a complete browser extension by adopting the relevant orchestration patterns from the known-good Ichigo extension while keeping Hanako's server-side translation, OCR, provider settings, and rendering as the source of truth.
 
-Image capture and submission already work. This pass focuses on the extension features around that pipeline: explicit user actions, status, duplicate protection, restore/clear behavior, and safer payload handling.
+Image capture and submission already work. This pass focuses on the extension features around that pipeline: explicit user actions, single-image replacement, queued multi-image project submission, status, duplicate protection, restore/clear behavior, and safer payload handling.
 
 ## Non-Goals
 
@@ -23,11 +23,19 @@ The popup should become the main control surface for the current tab:
 - Offer a direct link to the current Hanako job when one exists.
 - Keep the existing WebUI link.
 
-The context menu should expose explicit commands:
+The context menu should stay focused on image actions:
 
-- `Translate image with Hanako` for right-click image translation.
-- `Translate page with Hanako` for the current page.
-- `Clear Hanako translations` for restoring original page images.
+- `Translate with Hanako` for the existing right-click single-image workflow. This sends the clicked image to Hanako, waits for the rendered output, and swaps the translated image in-place.
+- `Queue to Hanako` for adding the clicked image to the extension queue. The menu title should show the current queued page count, such as `Queue to Hanako (2)`.
+- `Queue to Hanako` should have a submenu item named `Send queue`. Hovering over `Queue to Hanako` exposes `Send queue`; clicking `Send queue` submits the queued images to Hanako as one project.
+
+Queued jobs are distinct from single-image translation:
+
+- Queued images are sent together in the order the user queued them.
+- Sending the queue creates one normal Hanako project/job.
+- Queue jobs do not replace images in the browser page.
+- After sending, the user uses Hanako's current job tab/WebUI to review and download the output.
+- After a successful queue send, the extension clears the queue.
 
 The browser action should expose lightweight state:
 
@@ -35,6 +43,7 @@ The browser action should expose lightweight state:
 - Running state while an explicit translation action is in progress.
 - Success state when replacements were applied.
 - Error state when the job fails or the extension cannot reach Hanako.
+- Queue count state when pages are queued. The badge text should show `1`, `2`, `3`, and so on for the current queued page count.
 
 This can use action badges first, so the feature does not depend on a separate icon asset pass.
 
@@ -54,7 +63,22 @@ User settings should remain simple:
 - Hanako base URL.
 - Target language.
 
+The settings page should only save the Hanako base URL when it has a valid server address and explicit port. Accepted formats should include local development and Tower-style URLs, such as `http://localhost:8787` and `http://192.168.50.138:8787`. Invalid or portless values should be rejected with a visible validation message and should not overwrite the previous working setting.
+
 Additional settings are out of scope unless required by the implementation.
+
+Queued image state should include:
+
+- Queue item ID.
+- Source page URL.
+- Source image URL when available.
+- Captured image bytes or a cache reference to captured image bytes.
+- Media type.
+- Width and height.
+- Original DOM metadata for ordering/debugging, but not for replacement.
+- Queued timestamp.
+
+The queue should be stored locally so closing and reopening the popup does not lose queued pages. Queue storage should avoid unbounded growth by enforcing a practical maximum item count and payload size.
 
 ## Job Manager
 
@@ -64,11 +88,14 @@ Responsibilities:
 
 - Serialize repeated clicks for the same tab/action key.
 - Prevent duplicate page jobs while one is already running for the same tab.
+- Add right-clicked images to the queue without creating a Hanako job.
+- Submit queued images as one Hanako project/job when `Send queue` is clicked.
+- Keep single-image context-menu jobs separate from queued project jobs.
 - Persist job status transitions so the popup can reopen and show what happened.
 - Normalize errors from capture, Hanako upload, polling, replacement, and timeout.
 - Update action badge state after each transition.
 
-The manager should wrap the existing `translateActiveTab` and `translateContextMenuImage` flows rather than replacing them wholesale.
+The manager should wrap the existing `translateActiveTab` and `translateContextMenuImage` flows rather than replacing them wholesale, and should add a new queue submission path that calls Hanako's page/project endpoint with all queued images.
 
 ## Content Restore Flow
 
@@ -100,12 +127,14 @@ New or expanded modules:
 - `src/background/job-manager.ts`: orchestrates explicit translation actions, duplicate protection, runtime state, and status updates.
 - `src/background/job-state.ts`: typed storage helpers for tab job state.
 - `src/background/action-status.ts`: badge/status helpers.
+- `src/background/queue-state.ts`: typed storage helpers for queued image items and queue counts.
+- `src/background/queue-flow.ts`: captures right-clicked images into queue items and submits the queue as a single Hanako project/job.
 - `src/background/translation-cache.ts`: small hash-based cache for recent rendered outputs.
 - `src/content/dom-replacer.ts`: add clear/restore behavior.
 - `src/content/content-entry.ts`: handle `HANAKO_CLEAR_TRANSLATIONS`.
-- `src/popup/Popup.tsx`: show status and controls.
-- `src/popup/popup-actions.ts`: add messages for clear/current job/status.
-- `src/background/context-menu.ts`: add page translate and clear menu items.
+- `src/popup/Popup.tsx`: show status, queue count, send queue, clear queue, and current job controls.
+- `src/popup/popup-actions.ts`: add messages for clear/current job/status and queue operations.
+- `src/background/context-menu.ts`: keep `Translate with Hanako`, add `Queue to Hanako`, and add `Send queue` as its submenu item.
 - `src/background/service-worker.ts`: route all popup/context menu actions through the job manager.
 
 Existing modules should remain the source of truth for:
@@ -123,6 +152,9 @@ Errors should be user-visible and testable:
 - Hanako unavailable: show connection failure and keep actions available for retry.
 - Duplicate action: return the active job/status instead of creating another job.
 - Capture failure: explain that the image bytes could not be extracted.
+- Queue add failure: explain that the image could not be captured and was not queued.
+- Queue send with no items: show that the queue is empty and do not create a Hanako job.
+- Queue send failure: preserve the queue so the user can retry.
 - Hanako job failed: surface the job error message and link the job where available.
 - Timeout: show that the job is still processing and keep the WebUI/job link.
 - Replacement failure: show the job completed but page replacement failed.
@@ -135,7 +167,10 @@ Add focused tests for:
 
 - Job manager duplicate protection and state transitions.
 - Popup actions for translate, clear, status, and current job.
-- Context menu creation and dispatch.
+- Context menu creation and dispatch, including `Queue to Hanako` and its `Send queue` submenu.
+- Queue state add, count, clear, ordering, and send behavior.
+- Queue jobs create one Hanako project and do not send replacement messages to the content script.
+- Hanako base URL validation requires a valid server address and explicit port before saving.
 - Clear/restore behavior for normal images, `srcset`, and `<picture>` sources.
 - Action badge status helpers.
 - Translation cache keying by image hash, target language, and Hanako base URL.
@@ -147,6 +182,9 @@ Manual QA after implementation:
 - Load unpacked extension in Chrome.
 - Point it at the Tower Hanako WebUI.
 - Right-click translate a test image.
+- Queue several right-clicked images one by one and confirm the badge/menu counter increments.
+- Send the queue and confirm Hanako receives one multi-page project in queue order.
+- Confirm queue project output is accessed from Hanako WebUI and no browser images are replaced.
 - Use popup page translation on a manga/image tab.
 - Confirm duplicate clicks do not create duplicate jobs.
 - Confirm popup status survives closing/reopening the popup.
