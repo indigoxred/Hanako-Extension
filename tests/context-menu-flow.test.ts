@@ -3,6 +3,63 @@ import { describe, expect, it } from "vitest";
 import { translateContextMenuImage } from "../src/background/context-menu-flow.js";
 
 describe("context menu translation flow", () => {
+  it("prefers bytes captured from the clicked page image before fetching the URL", async () => {
+    let fetchCalls = 0;
+    const result = await translateContextMenuImage({
+      captureImageBytes: async (context) => {
+        expect(context).toEqual({
+          pageUrl: "https://manga.example/chapter-1",
+          sourceUrl: "https://manga.example/page-1.png",
+          tabId: 12
+        });
+
+        return {
+          bytesBase64: "Y2FwdHVyZWQtcG5n",
+          mediaType: "image/png",
+          name: "captured-page.png"
+        };
+      },
+      context: {
+        pageUrl: "https://manga.example/chapter-1",
+        srcUrl: "https://manga.example/page-1.png",
+        tabId: 12
+      },
+      fetchImageBytes: async () => {
+        fetchCalls += 1;
+        throw new Error("The source URL should not be fetched after capture");
+      },
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      replaceImage: async () => ({ ok: true, replaced: 1 }),
+      translateImage: async (input) => {
+        expect(input.image).toMatchObject({
+          bytesBase64: "Y2FwdHVyZWQtcG5n",
+          mediaType: "image/png",
+          name: "captured-page.png",
+          pageUrl: "https://manga.example/chapter-1",
+          url: "https://manga.example/page-1.png"
+        });
+        return { job: { id: "job_1" } };
+      },
+      waitForJobCompletion: async () => ({
+        detail: {
+          job: { id: "job_1", status: "completed" },
+          pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+        },
+        status: "completed"
+      })
+    });
+
+    expect(fetchCalls).toBe(0);
+    expect(result).toMatchObject({
+      jobId: "job_1",
+      ok: true,
+      status: "completed"
+    });
+  });
+
   it("translates the clicked image, waits for completion, and replaces it without opening WebUI", async () => {
     const openedUrls: string[] = [];
     const replacements: unknown[] = [];

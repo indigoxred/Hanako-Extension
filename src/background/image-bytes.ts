@@ -45,6 +45,10 @@ export async function withImageBytes(
   image: ExtensionImageCandidate,
   fetcher: FetchImageBytes = fetchImageBytes
 ): Promise<ExtensionImageCandidate> {
+  if (hasSupportedImageBytes(image)) {
+    return image;
+  }
+
   const payload = await fetcher(image).catch(() => undefined);
   return payload ? { ...image, ...payload } : image;
 }
@@ -53,6 +57,10 @@ export async function withRequiredImageBytes(
   image: ExtensionImageCandidate,
   fetcher: FetchImageBytes = fetchImageBytes
 ): Promise<ExtensionImageCandidate> {
+  if (hasSupportedImageBytes(image)) {
+    return image;
+  }
+
   const payload = await fetcher(image).catch(() => undefined);
 
   if (!payload) {
@@ -60,6 +68,14 @@ export async function withRequiredImageBytes(
   }
 
   return { ...image, ...payload };
+}
+
+function hasSupportedImageBytes(image: ExtensionImageCandidate): boolean {
+  return Boolean(
+    image.bytesBase64 &&
+    image.mediaType &&
+    isSupportedImageMediaType(normalizeMediaType(image.mediaType))
+  );
 }
 
 function normalizeMediaType(contentType: string | null): string {

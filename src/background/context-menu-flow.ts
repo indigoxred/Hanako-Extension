@@ -4,7 +4,15 @@ import {
   type ExtensionJobDetail,
   type TranslateImageInput
 } from "./hanako-client.js";
-import { withRequiredImageBytes, type FetchImageBytes } from "./image-bytes.js";
+import {
+  withRequiredImageBytes,
+  type FetchImageBytes,
+  type ImageBytesPayload
+} from "./image-bytes.js";
+import {
+  captureVisibleElementBitmap,
+  type VisibleElementRect
+} from "./visible-tab-capture.js";
 import {
   createRenderedPageUrl,
   waitForJobCompletion as defaultWaitForJobCompletion,
@@ -19,6 +27,7 @@ export interface ContextMenuImageContext {
   srcUrl?: string;
   pageUrl?: string;
   tabId?: number;
+  windowId?: number;
 }
 
 export type ContextMenuTranslationResult =
@@ -35,7 +44,17 @@ export interface ReplaceContextImageInput {
   sourceUrl: string;
 }
 
+export interface CaptureContextImageInput {
+  pageUrl?: string;
+  sourceUrl: string;
+  tabId: number;
+  windowId?: number;
+}
+
 export interface TranslateContextMenuImageDependencies {
+  captureImageBytes?: (
+    input: CaptureContextImageInput
+  ) => Promise<ImageBytesPayload | undefined>;
   context: ContextMenuImageContext;
   fetchImageBytes?: FetchImageBytes;
   loadSettings?: () => Promise<ExtensionSettings>;
@@ -51,6 +70,7 @@ export interface TranslateContextMenuImageDependencies {
 }
 
 export async function translateContextMenuImage({
+  captureImageBytes = defaultCaptureImageBytes,
   context,
   fetchImageBytes,
   loadSettings = loadExtensionSettings,
@@ -68,13 +88,22 @@ export async function translateContextMenuImage({
 
   const settings = await loadSettings();
   let image: ExtensionImageCandidate;
+  const captured = await captureImageBytes({
+    ...(context.pageUrl ? { pageUrl: context.pageUrl } : {}),
+    sourceUrl: context.srcUrl,
+    tabId: context.tabId,
+    ...(context.windowId === undefined ? {} : { windowId: context.windowId })
+  }).catch(() => undefined);
 
   try {
     image = await withRequiredImageBytes(
-      compactImageCandidate({
-        pageUrl: context.pageUrl,
-        url: context.srcUrl
-      }),
+      {
+        ...compactImageCandidate({
+          pageUrl: context.pageUrl,
+          url: context.srcUrl
+        }),
+        ...(captured ?? {})
+      },
       fetchImageBytes
     );
   } catch (error) {
@@ -142,6 +171,37 @@ export async function translateContextMenuImage({
   };
 }
 
+async function defaultCaptureImageBytes(
+  input: CaptureContextImageInput
+): Promise<ImageBytesPayload | undefined> {
+  await chrome.scripting.executeScript({
+    files: ["content/content-entry.js"],
+    target: { tabId: input.tabId }
+  });
+
+  const response = (await chrome.tabs.sendMessage(input.tabId, {
+    sourceUrl: input.sourceUrl,
+    type: "HANAKO_CAPTURE_IMAGE_BYTES"
+  })) as unknown;
+
+  if (isCaptureImageBytesResponse(response)) {
+    return response.image;
+  }
+
+  const located = (await chrome.tabs.sendMessage(input.tabId, {
+    sourceUrl: input.sourceUrl,
+    type: "HANAKO_LOCATE_IMAGE_ELEMENT"
+  })) as unknown;
+
+  return isLocatedImageElementResponse(located)
+    ? captureVisibleElementBitmap({
+        rect: located.rect,
+        sourceUrl: input.sourceUrl,
+        ...(input.windowId === undefined ? {} : { windowId: input.windowId })
+      })
+    : undefined;
+}
+
 async function defaultReplaceImage(
   tabId: number,
   replacement: ReplaceContextImageInput
@@ -165,4 +225,55 @@ function compactImageCandidate(input: {
     ...(input.pageUrl ? { pageUrl: input.pageUrl } : {}),
     url: input.url
   };
+}
+
+function isCaptureImageBytesResponse(response: unknown): response is {
+  image: ImageBytesPayload;
+  ok: true;
+} {
+  return (
+    typeof response === "object" &&
+    response !== null &&
+    "ok" in response &&
+    response.ok === true &&
+    "image" in response &&
+    typeof response.image === "object" &&
+    response.image !== null &&
+    "bytesBase64" in response.image &&
+    typeof response.image.bytesBase64 === "string" &&
+    "mediaType" in response.image &&
+    typeof response.image.mediaType === "string"
+  );
+}
+
+function isLocatedImageElementResponse(response: unknown): response is {
+  ok: true;
+  rect: VisibleElementRect;
+} {
+  return (
+    typeof response === "object" &&
+    response !== null &&
+    "ok" in response &&
+    response.ok === true &&
+    "rect" in response &&
+    typeof response.rect === "object" &&
+    response.rect !== null &&
+    isNumberProperty(response.rect, "height") &&
+    isNumberProperty(response.rect, "left") &&
+    isNumberProperty(response.rect, "top") &&
+    isNumberProperty(response.rect, "viewportHeight") &&
+    isNumberProperty(response.rect, "viewportWidth") &&
+    isNumberProperty(response.rect, "width")
+  );
+}
+
+function isNumberProperty(
+  value: object,
+  property: keyof VisibleElementRect
+): boolean {
+  return (
+    property in value &&
+    typeof (value as Record<keyof VisibleElementRect, unknown>)[property] ===
+      "number"
+  );
 }

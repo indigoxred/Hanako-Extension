@@ -16,7 +16,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     context: {
       ...(info.pageUrl ? { pageUrl: info.pageUrl } : {}),
       ...(info.srcUrl ? { srcUrl: info.srcUrl } : {}),
-      ...(tab?.id ? { tabId: tab.id } : {})
+      ...(tab?.id ? { tabId: tab.id } : {}),
+      ...(tab?.windowId === undefined ? {} : { windowId: tab.windowId })
     }
   });
 });

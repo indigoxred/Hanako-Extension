@@ -41,6 +41,25 @@ describe("image byte extraction", () => {
     ).rejects.toThrow("The extension could not extract bytes for this image");
   });
 
+  it("uses already captured image bytes without fetching the source URL", async () => {
+    await expect(
+      withRequiredImageBytes(
+        {
+          bytesBase64: "AQID",
+          mediaType: "image/png",
+          url: "https://manga.example/page-1.png"
+        },
+        async () => {
+          throw new Error("Already captured bytes should not be fetched again");
+        }
+      )
+    ).resolves.toEqual({
+      bytesBase64: "AQID",
+      mediaType: "image/png",
+      url: "https://manga.example/page-1.png"
+    });
+  });
+
   it("ignores unsupported image media types before upload", async () => {
     const svgPayload = await fetchImageBytes(
       { url: "https://manga.example/icon.svg" },
