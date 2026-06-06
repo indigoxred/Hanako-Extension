@@ -177,6 +177,84 @@ describe("extension translate flow", () => {
     });
   });
 
+  it("skips active-tab images whose bytes cannot be extracted and submits the remaining raster images", async () => {
+    const result = await translateActiveTab({
+      executeContentScript: async () => undefined,
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      fetchImageBytes: async (image) => {
+        if (image.url?.endsWith("page-1.jpg")) {
+          return {
+            bytesBase64: "cGFnZSAx",
+            mediaType: "image/jpeg"
+          };
+        }
+
+        return undefined;
+      },
+      queryActiveTab: async () => ({ id: 7 }),
+      sendDetectImagesMessage: async () => ({
+        images: [
+          {
+            domId: "hanako-page-1",
+            height: 1200,
+            url: "https://manga.example/page-1.jpg",
+            width: 800
+          },
+          {
+            domId: "hanako-icon",
+            height: 150,
+            url: "https://manga.example/icon.svg",
+            width: 150
+          },
+          {
+            domId: "hanako-blocked",
+            height: 680,
+            url: "https://cdn.example/blocked.jpg",
+            width: 483
+          }
+        ],
+        ok: true,
+        pageUrl: "https://manga.example/chapter-1"
+      }),
+      sendReplaceImagesMessage: async (_tabId, input) => ({
+        ok: true,
+        replaced: input.replacements.length
+      }),
+      translatePage: async (input) => {
+        expect(input.images).toEqual([
+          {
+            bytesBase64: "cGFnZSAx",
+            domId: "hanako-page-1",
+            height: 1200,
+            mediaType: "image/jpeg",
+            pageUrl: "https://manga.example/chapter-1",
+            url: "https://manga.example/page-1.jpg",
+            width: 800
+          }
+        ]);
+        return { job: { id: "job_1" } };
+      },
+      waitForJobCompletion: async () => ({
+        detail: {
+          job: { id: "job_1", status: "completed" },
+          pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+        },
+        status: "completed"
+      })
+    });
+
+    expect(result).toEqual({
+      imageCount: 1,
+      jobId: "job_1",
+      ok: true,
+      replacementCount: 1,
+      status: "completed"
+    });
+  });
+
   it("fails before contacting Hanako when active-tab image bytes cannot be extracted", async () => {
     const result = await translateActiveTab({
       executeContentScript: async () => undefined,

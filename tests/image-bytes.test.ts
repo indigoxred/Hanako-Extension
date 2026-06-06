@@ -40,4 +40,26 @@ describe("image byte extraction", () => {
       )
     ).rejects.toThrow("The extension could not extract bytes for this image");
   });
+
+  it("ignores unsupported image media types before upload", async () => {
+    const svgPayload = await fetchImageBytes(
+      { url: "https://manga.example/icon.svg" },
+      async () =>
+        new Response(new TextEncoder().encode("<svg />"), {
+          headers: { "content-type": "image/svg+xml" },
+          status: 200
+        })
+    );
+    const avifPayload = await fetchImageBytes(
+      { url: "https://manga.example/page.avif" },
+      async () =>
+        new Response(new Uint8Array([1, 2, 3]), {
+          headers: { "content-type": "image/avif" },
+          status: 200
+        })
+    );
+
+    expect(svgPayload).toBeUndefined();
+    expect(avifPayload).toBeUndefined();
+  });
 });

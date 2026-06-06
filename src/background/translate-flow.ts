@@ -104,18 +104,11 @@ export async function translateActiveTab(
   }
 
   const settings = await loadSettings();
-  let uploadImages: ExtensionImageCandidate[];
+  const uploadImages = await resolveUploadImages(images, fetchImageBytes);
 
-  try {
-    uploadImages = await Promise.all(
-      images.map((image) => withRequiredImageBytes(image, fetchImageBytes))
-    );
-  } catch (error) {
+  if (uploadImages.length === 0) {
     return {
-      error:
-        error instanceof Error
-          ? error.message
-          : "The extension could not extract bytes for this image",
+      error: "The extension could not extract bytes for this image",
       ok: false
     };
   }
@@ -159,12 +152,30 @@ export async function translateActiveTab(
   const replaced = await sendReplaceImagesMessage(tab.id, { replacements });
 
   return {
-    imageCount: images.length,
+    imageCount: uploadImages.length,
     jobId: detail.job.id,
     ok: true,
     replacementCount: replaced.replaced,
     status: "completed"
   };
+}
+
+async function resolveUploadImages(
+  images: ExtensionImageCandidate[],
+  fetchImageBytes?: FetchImageBytes
+): Promise<ExtensionImageCandidate[]> {
+  const uploadImages: ExtensionImageCandidate[] = [];
+
+  for (const image of images) {
+    try {
+      uploadImages.push(await withRequiredImageBytes(image, fetchImageBytes));
+    } catch {
+      // Page detection can include icons, SVGs, blocked CDN URLs, and other
+      // non-page images. Keep valid pages moving instead of failing the batch.
+    }
+  }
+
+  return uploadImages;
 }
 
 function buildReplacementInstructions(input: {

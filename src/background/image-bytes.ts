@@ -30,7 +30,7 @@ export async function fetchImageBytes(
 
   const mediaType = normalizeMediaType(response.headers.get("content-type"));
 
-  if (!mediaType.startsWith("image/")) {
+  if (!isSupportedImageMediaType(mediaType)) {
     return undefined;
   }
 
@@ -64,6 +64,10 @@ export async function withRequiredImageBytes(
 
 function normalizeMediaType(contentType: string | null): string {
   return (contentType ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+}
+
+function isSupportedImageMediaType(mediaType: string): boolean {
+  return ["image/jpeg", "image/png", "image/webp"].includes(mediaType);
 }
 
 function isHttpUrl(rawUrl: string): boolean {
