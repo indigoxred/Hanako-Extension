@@ -35,7 +35,6 @@ describe("context menus", () => {
         contexts: ["image"],
         enabled: false,
         id: SEND_QUEUE_MENU_ID,
-        parentId: QUEUE_IMAGE_MENU_ID,
         title: "Send queue"
       }
     ]);
