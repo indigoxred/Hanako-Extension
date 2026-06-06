@@ -9,6 +9,7 @@ describe("extension manifest", () => {
       "storage",
       "contextMenus",
       "activeTab",
+      "alarms",
       "scripting",
       "unlimitedStorage"
     ]);

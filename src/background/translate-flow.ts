@@ -1,4 +1,9 @@
 import {
+  clearBrowserActiveExtensionJob,
+  trackBrowserActiveExtensionJob,
+  type TrackActiveExtensionJobInput
+} from "./active-job-poller.js";
+import {
   translatePage as defaultTranslatePage,
   type ExtensionImageCandidate,
   type ExtensionJobDetail,
@@ -58,6 +63,8 @@ export interface TranslateActiveTabDependencies {
     input: ReplaceImagesMessageInput
   ) => Promise<ReplaceImagesResponse>;
   translatePage?: (input: TranslatePageInput) => Promise<ExtensionJobDetail>;
+  trackActiveJob?: (input: TrackActiveExtensionJobInput) => Promise<void>;
+  clearActiveJob?: (input: { jobId: string; tabId: number }) => Promise<void>;
   waitForJobCompletion?: (
     input: WaitForJobCompletionInput
   ) => Promise<WaitForJobCompletionResult>;
@@ -76,6 +83,10 @@ export async function translateActiveTab(
   const fetchImageBytes = dependencies.fetchImageBytes;
   const loadSettings = dependencies.loadSettings ?? loadExtensionSettings;
   const translatePage = dependencies.translatePage ?? defaultTranslatePage;
+  const trackActiveJob =
+    dependencies.trackActiveJob ?? trackBrowserActiveExtensionJob;
+  const clearActiveJob =
+    dependencies.clearActiveJob ?? clearBrowserActiveExtensionJob;
   const waitForJobCompletion =
     dependencies.waitForJobCompletion ?? defaultWaitForJobCompletion;
   const tab = await queryActiveTab();
@@ -118,6 +129,17 @@ export async function translateActiveTab(
     images: uploadImages,
     targetLanguage: settings.targetLanguage
   });
+  await trackActiveJob({
+    baseUrl: settings.hanakoBaseUrl,
+    imageCount: uploadImages.length,
+    jobId: detail.job.id,
+    replacements: uploadImages.map((image) => ({
+      ...(image.domId ? { domId: image.domId } : {}),
+      ...(image.domIndex === undefined ? {} : { domIndex: image.domIndex }),
+      ...(image.url ? { sourceUrl: image.url } : {})
+    })),
+    tabId: tab.id
+  });
 
   const completed = await waitForJobCompletion({
     baseUrl: settings.hanakoBaseUrl,
@@ -125,6 +147,7 @@ export async function translateActiveTab(
   });
 
   if (completed.status === "failed") {
+    await clearActiveJob({ jobId: detail.job.id, tabId: tab.id });
     return {
       error: completed.detail.error?.message ?? "Hanako job failed",
       jobId: detail.job.id,
@@ -150,6 +173,7 @@ export async function translateActiveTab(
     pages: completed.detail.pages ?? []
   });
   const replaced = await sendReplaceImagesMessage(tab.id, { replacements });
+  await clearActiveJob({ jobId: detail.job.id, tabId: tab.id });
 
   return {
     imageCount: uploadImages.length,

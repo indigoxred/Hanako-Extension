@@ -1,4 +1,9 @@
 import {
+  clearBrowserActiveExtensionJob,
+  trackBrowserActiveExtensionJob,
+  type TrackActiveExtensionJobInput
+} from "./active-job-poller.js";
+import {
   translateImage as defaultTranslateImage,
   type ExtensionImageCandidate,
   type ExtensionJobDetail,
@@ -85,6 +90,8 @@ export interface TranslateContextMenuImageDependencies {
     replacement: ReplaceContextImageInput
   ) => Promise<{ ok: boolean; replaced: number }>;
   translateImage?: (input: TranslateImageInput) => Promise<ExtensionJobDetail>;
+  trackActiveJob?: (input: TrackActiveExtensionJobInput) => Promise<void>;
+  clearActiveJob?: (input: { jobId: string; tabId: number }) => Promise<void>;
   waitForJobCompletion?: (
     input: WaitForJobCompletionInput
   ) => Promise<WaitForJobCompletionResult>;
@@ -98,6 +105,8 @@ export async function translateContextMenuImage({
   onPhase,
   replaceImage = defaultReplaceImage,
   translateImage = defaultTranslateImage,
+  trackActiveJob = trackBrowserActiveExtensionJob,
+  clearActiveJob = clearBrowserActiveExtensionJob,
   waitForJobCompletion = defaultWaitForJobCompletion
 }: TranslateContextMenuImageDependencies): Promise<ContextMenuTranslationResult> {
   if (!context.srcUrl) {
@@ -163,12 +172,26 @@ export async function translateContextMenuImage({
     message: "Waiting for Hanako job",
     phase: "waiting-for-job"
   });
+  await trackActiveJob({
+    baseUrl: settings.hanakoBaseUrl,
+    imageCount: 1,
+    jobId: detail.job.id,
+    replacements: [
+      {
+        ...(image.domId ? { domId: image.domId } : {}),
+        ...(image.domIndex === undefined ? {} : { domIndex: image.domIndex }),
+        sourceUrl: context.srcUrl
+      }
+    ],
+    tabId: context.tabId
+  });
   const completed = await waitForJobCompletion({
     baseUrl: settings.hanakoBaseUrl,
     jobId: detail.job.id
   });
 
   if (completed.status === "failed") {
+    await clearActiveJob({ jobId: detail.job.id, tabId: context.tabId });
     await emitPhase(onPhase, {
       jobId: detail.job.id,
       message: completed.detail.error?.message ?? "Hanako job failed",
@@ -199,6 +222,7 @@ export async function translateContextMenuImage({
   const page = completed.detail.pages?.[0];
 
   if (!page?.renderedAssetId) {
+    await clearActiveJob({ jobId: detail.job.id, tabId: context.tabId });
     await emitPhase(onPhase, {
       jobId: detail.job.id,
       message: "Hanako job completed without a rendered page",
@@ -226,6 +250,7 @@ export async function translateContextMenuImage({
     ...(image.domIndex === undefined ? {} : { domIndex: image.domIndex }),
     sourceUrl: context.srcUrl
   });
+  await clearActiveJob({ jobId: detail.job.id, tabId: context.tabId });
 
   await emitPhase(onPhase, {
     jobId: detail.job.id,

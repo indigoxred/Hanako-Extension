@@ -6,6 +6,7 @@ const manifest = {
     "storage",
     "contextMenus",
     "activeTab",
+    "alarms",
     "scripting",
     "unlimitedStorage"
   ],

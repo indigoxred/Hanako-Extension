@@ -1,4 +1,9 @@
 import {
+  ACTIVE_EXTENSION_JOB_ALARM_NAME,
+  pollActiveExtensionJobsOnce,
+  syncActiveExtensionJobPollingAlarm
+} from "./active-job-poller.js";
+import {
   QUEUE_IMAGE_MENU_ID,
   SEND_QUEUE_MENU_ID,
   TRANSLATE_IMAGE_MENU_ID,
@@ -19,7 +24,22 @@ chrome.runtime.onInstalled.addListener(() => {
           text: result.count ? String(result.count) : ""
         });
       }
-    });
+    })
+    .then(() => syncActiveExtensionJobPollingAlarm());
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  void syncActiveExtensionJobPollingAlarm();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== ACTIVE_EXTENSION_JOB_ALARM_NAME) {
+    return;
+  }
+
+  void pollActiveExtensionJobsOnce()
+    .catch(() => undefined)
+    .then(() => syncActiveExtensionJobPollingAlarm());
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
