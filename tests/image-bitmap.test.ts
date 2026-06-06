@@ -145,9 +145,10 @@ describe("content image bitmap capture", () => {
 
   it("locates the matching image element rectangle for screenshot fallback", () => {
     document.body.innerHTML = `
+      <img src="https://manga.example/page-1.jpg" width="640" height="960">
       <img src="https://manga.example/page-2.jpg" width="640" height="960">
     `;
-    const image = document.querySelector("img");
+    const image = document.querySelectorAll("img")[1];
 
     if (!image) {
       throw new Error("Expected test image");
@@ -172,6 +173,8 @@ describe("content image bitmap capture", () => {
     expect(
       locateImageElementBySource("https://manga.example/page-2.jpg", document)
     ).toMatchObject({
+      domId: "hanako-context-img-1",
+      domIndex: 1,
       height: 400,
       left: 25,
       top: 60,
@@ -179,5 +182,6 @@ describe("content image bitmap capture", () => {
       viewportWidth: window.innerWidth,
       width: 300
     });
+    expect(image.dataset.hanakoDomId).toBe("hanako-context-img-1");
   });
 });

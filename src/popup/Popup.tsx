@@ -10,18 +10,28 @@ import {
 import {
   createClearQueueMessage,
   createClearTranslationsMessage,
-  createDetectActiveTabMessage,
+  createGetActiveTabJobStateMessage,
   createGetQueueStatusMessage,
   createOpenJobUrl,
   createOpenWebUiUrl,
-  createSendQueueMessage,
-  createTranslateActiveTabMessage
+  createSendQueueMessage
 } from "./popup-actions.js";
 
 interface QueueStatusResult {
   count?: number;
   error?: string;
   ok?: boolean;
+}
+
+interface TabJobStateResult {
+  error?: string;
+  ok?: boolean;
+  state?: {
+    jobId?: string;
+    message: string;
+    status: string;
+    updatedAt: string;
+  };
 }
 
 interface SendQueueResult {
@@ -44,10 +54,15 @@ function PopupApp() {
     void loadExtensionSettings()
       .then(async (loaded) => {
         setSettings(loaded);
-        const ok = await checkHanakoConnection({
-          baseUrl: loaded.hanakoBaseUrl
-        });
-        setStatus(ok ? "Ready" : "Unavailable");
+        const [ok, hasJobStatus] = await Promise.all([
+          checkHanakoConnection({
+            baseUrl: loaded.hanakoBaseUrl
+          }),
+          refreshJobStatus(loaded)
+        ]);
+        if (!hasJobStatus) {
+          setStatus(ok ? "Ready" : "Unavailable");
+        }
       })
       .catch(() => setStatus("Unavailable"));
     void refreshQueueCount();
@@ -64,6 +79,30 @@ function PopupApp() {
         setQueueCount(0);
         return 0;
       });
+  }
+
+  function refreshJobStatus(currentSettings: ExtensionSettings) {
+    return chrome.runtime
+      .sendMessage(createGetActiveTabJobStateMessage())
+      .then((result: TabJobStateResult) => {
+        if (!result.ok || !result.state) {
+          return false;
+        }
+
+        setStatus(result.state.message);
+
+        if (result.state.jobId) {
+          setJobUrl(
+            createOpenJobUrl({
+              hanakoBaseUrl: currentSettings.hanakoBaseUrl,
+              jobId: result.state.jobId
+            })
+          );
+        }
+
+        return true;
+      })
+      .catch(() => false);
   }
 
   function sendQueue() {
@@ -120,60 +159,6 @@ function PopupApp() {
       <h1>Hanako</h1>
       <p>{status}</p>
       <p>Queued pages: {queueCount}</p>
-      <button
-        type="button"
-        onClick={() => {
-          setStatus("Detecting");
-          void chrome.runtime
-            .sendMessage(createDetectActiveTabMessage())
-            .then((result: { imageCount?: number; ok?: boolean }) => {
-              setStatus(
-                result.ok
-                  ? `Found ${result.imageCount ?? 0} images`
-                  : "Detection failed"
-              );
-            })
-            .catch(() => setStatus("Detection failed"));
-        }}
-      >
-        Detect manga images
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          setStatus("Creating job");
-          void chrome.runtime
-            .sendMessage(createTranslateActiveTabMessage())
-            .then(
-              (result: {
-                error?: string;
-                imageCount?: number;
-                replacementCount?: number;
-                ok?: boolean;
-                status?: "completed" | "failed" | "timeout";
-              }) => {
-                if (result.ok && result.status === "completed") {
-                  setStatus(`Replaced ${result.replacementCount ?? 0} images`);
-                  return;
-                }
-
-                if (result.ok && result.status === "timeout") {
-                  setStatus("Job created; still processing");
-                  return;
-                }
-
-                setStatus(
-                  result.ok
-                    ? `Created job from ${result.imageCount ?? 0} images`
-                    : (result.error ?? "Translation failed")
-                );
-              }
-            )
-            .catch(() => setStatus("Translation failed"));
-        }}
-      >
-        Translate page
-      </button>
       <button
         disabled={queueCount <= 0}
         type="button"

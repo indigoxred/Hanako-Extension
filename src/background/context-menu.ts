@@ -17,10 +17,18 @@ export function createContextMenu(
   });
   chromeApi.contextMenus.create({
     contexts: ["image"],
+    enabled: false,
     id: SEND_QUEUE_MENU_ID,
     parentId: QUEUE_IMAGE_MENU_ID,
     title: "Send queue"
   });
+}
+
+export async function resetContextMenu(
+  chromeApi: Pick<typeof chrome, "contextMenus">
+): Promise<void> {
+  await chromeApi.contextMenus.removeAll();
+  createContextMenu(chromeApi);
 }
 
 export async function updateQueueMenuTitle(
@@ -28,5 +36,8 @@ export async function updateQueueMenuTitle(
   count: number
 ): Promise<void> {
   const title = count > 0 ? `Queue to Hanako (${count})` : "Queue to Hanako";
-  await chromeApi.contextMenus.update(QUEUE_IMAGE_MENU_ID, { title });
+  await Promise.all([
+    chromeApi.contextMenus.update(QUEUE_IMAGE_MENU_ID, { title }),
+    chromeApi.contextMenus.update(SEND_QUEUE_MENU_ID, { enabled: count > 0 })
+  ]);
 }

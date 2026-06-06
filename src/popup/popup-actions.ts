@@ -18,6 +18,10 @@ export interface GetQueueStatusMessage {
   type: "HANAKO_GET_QUEUE_STATUS";
 }
 
+export interface GetActiveTabJobStateMessage {
+  type: "HANAKO_GET_ACTIVE_TAB_JOB_STATE";
+}
+
 export interface SendQueueMessage {
   type: "HANAKO_SEND_QUEUE";
 }
@@ -59,6 +63,10 @@ export function createTranslateActiveTabMessage(): TranslateActiveTabMessage {
 
 export function createGetQueueStatusMessage(): GetQueueStatusMessage {
   return { type: "HANAKO_GET_QUEUE_STATUS" };
+}
+
+export function createGetActiveTabJobStateMessage(): GetActiveTabJobStateMessage {
+  return { type: "HANAKO_GET_ACTIVE_TAB_JOB_STATE" };
 }
 
 export function createSendQueueMessage(): SendQueueMessage {

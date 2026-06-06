@@ -81,4 +81,46 @@ describe("job manager", () => {
     expect(badgeCounts).toEqual([0]);
     expect(menuCounts).toEqual([0]);
   });
+
+  it("stores context menu job status for the source tab", async () => {
+    const states: unknown[] = [];
+    const manager = createJobManager({
+      setActionStatus: async () => undefined,
+      setTabJobState: async (tabId, state) => {
+        states.push({ state, tabId });
+        return { ...state, updatedAt: "now" };
+      },
+      translateContextMenuImage: async () => ({
+        jobId: "job_1",
+        ok: true,
+        replacementCount: 1,
+        status: "completed"
+      })
+    });
+
+    await expect(
+      manager.translateContextMenuImage({
+        srcUrl: "https://manga.example/page.png",
+        tabId: 7
+      })
+    ).resolves.toMatchObject({ jobId: "job_1", ok: true });
+
+    expect(states).toEqual([
+      {
+        state: {
+          message: "Translating clicked image",
+          status: "running"
+        },
+        tabId: 7
+      },
+      {
+        state: {
+          jobId: "job_1",
+          message: "Replaced 1 image",
+          status: "completed"
+        },
+        tabId: 7
+      }
+    ]);
+  });
 });

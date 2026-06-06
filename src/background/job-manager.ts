@@ -10,6 +10,10 @@ import {
 } from "./context-menu-flow.js";
 import { updateQueueMenuTitle as updateBrowserQueueMenuTitle } from "./context-menu.js";
 import {
+  setTabJobState as setBrowserTabJobState,
+  type StoredJobState
+} from "./job-state.js";
+import {
   queueContextMenuImage as defaultQueueContextMenuImage,
   sendQueuedImages as defaultSendQueuedImages,
   type QueueImageResult,
@@ -32,6 +36,10 @@ export interface JobManagerDependencies {
   }) => Promise<QueueImageResult>;
   sendQueuedImages?: () => Promise<SendQueueResult>;
   setActionStatus?: (status: ActionStatus) => Promise<void>;
+  setTabJobState?: (
+    tabId: number,
+    state: Omit<StoredJobState, "updatedAt">
+  ) => Promise<StoredJobState>;
   translateActiveTab?: () => Promise<TranslateActiveTabResult>;
   translateContextMenuImage?: (input: {
     context: ContextMenuImageContext;
@@ -51,6 +59,10 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
   const updateQueueMenuTitle =
     dependencies.updateQueueMenuTitle ??
     ((count: number) => updateBrowserQueueMenuTitle(chrome, count));
+  const setTabJobState =
+    dependencies.setTabJobState ??
+    ((tabId: number, state: Omit<StoredJobState, "updatedAt">) =>
+      setBrowserTabJobState(chrome.storage.local, tabId, state));
 
   async function dedupe<T>(key: string, run: () => Promise<T>): Promise<T> {
     const existing = inFlight.get(key) as Promise<T> | undefined;
@@ -91,9 +103,17 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
       if (result.ok) {
         await Promise.all([
           updateQueueBadge(result.count),
-          updateQueueMenuTitle(result.count)
+          updateQueueMenuTitle(result.count),
+          setContextTabJobState(context, {
+            message: `Queued ${result.count} page${result.count === 1 ? "" : "s"} for Hanako`,
+            status: "queued"
+          })
         ]);
       } else {
+        await setContextTabJobState(context, {
+          message: result.error,
+          status: "failed"
+        });
         await setActionStatus("error");
       }
 
@@ -141,6 +161,10 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
         `context:${context.tabId ?? "none"}:${context.srcUrl ?? "none"}`,
         async () => {
           await setActionStatus("running");
+          await setContextTabJobState(context, {
+            message: "Translating clicked image",
+            status: "running"
+          });
           const result = await (
             dependencies.translateContextMenuImage ??
             defaultTranslateContextMenuImage
@@ -148,13 +172,62 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
             error: errorMessage(error, "Translation failed"),
             ok: false as const
           }));
+          await setContextTabJobState(
+            context,
+            contextJobStateFromResult(result)
+          );
           await setActionStatus(result.ok ? "success" : "error");
           return result;
         }
       )
   };
+
+  function setContextTabJobState(
+    context: ContextMenuImageContext,
+    state: Omit<StoredJobState, "updatedAt">
+  ): Promise<StoredJobState | undefined> {
+    if (context.tabId === undefined) {
+      return Promise.resolve(undefined);
+    }
+
+    try {
+      return Promise.resolve(setTabJobState(context.tabId, state)).catch(
+        () => undefined
+      );
+    } catch {
+      return Promise.resolve(undefined);
+    }
+  }
 }
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+function contextJobStateFromResult(
+  result: ContextMenuTranslationResult
+): Omit<StoredJobState, "updatedAt"> {
+  if (!result.ok) {
+    return {
+      ...(result.jobId ? { jobId: result.jobId } : {}),
+      message: result.error,
+      status: "failed"
+    };
+  }
+
+  if (result.status === "timeout") {
+    return {
+      jobId: result.jobId,
+      message: "Hanako job is still processing",
+      status: "timeout"
+    };
+  }
+
+  return {
+    jobId: result.jobId,
+    message: `Replaced ${result.replacementCount} image${
+      result.replacementCount === 1 ? "" : "s"
+    }`,
+    status: "completed"
+  };
 }

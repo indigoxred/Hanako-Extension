@@ -1,23 +1,25 @@
 import {
-  createContextMenu,
   QUEUE_IMAGE_MENU_ID,
   SEND_QUEUE_MENU_ID,
-  TRANSLATE_IMAGE_MENU_ID
+  TRANSLATE_IMAGE_MENU_ID,
+  resetContextMenu
 } from "./context-menu.js";
 import { createJobManager } from "./job-manager.js";
+import { getTabJobState } from "./job-state.js";
 import { createDetectImagesMessage } from "../popup/popup-actions.js";
 
 const jobManager = createJobManager();
 
 chrome.runtime.onInstalled.addListener(() => {
-  createContextMenu(chrome);
-  void jobManager.getQueueStatus().then((result) => {
-    if (result.ok) {
-      void chrome.action.setBadgeText({
-        text: result.count ? String(result.count) : ""
-      });
-    }
-  });
+  void resetContextMenu(chrome)
+    .then(() => jobManager.getQueueStatus())
+    .then((result) => {
+      if (result.ok) {
+        void chrome.action.setBadgeText({
+          text: result.count ? String(result.count) : ""
+        });
+      }
+    });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -55,6 +57,11 @@ chrome.runtime.onMessage.addListener(
 
     if (isGetQueueStatusMessage(message)) {
       respond(sendResponse, jobManager.getQueueStatus());
+      return true;
+    }
+
+    if (isGetActiveTabJobStateMessage(message)) {
+      respond(sendResponse, getActiveTabJobState());
       return true;
     }
 
@@ -141,6 +148,12 @@ function isGetQueueStatusMessage(
   return isMessageType(message, "HANAKO_GET_QUEUE_STATUS");
 }
 
+function isGetActiveTabJobStateMessage(
+  message: unknown
+): message is { type: "HANAKO_GET_ACTIVE_TAB_JOB_STATE" } {
+  return isMessageType(message, "HANAKO_GET_ACTIVE_TAB_JOB_STATE");
+}
+
 function isSendQueueMessage(
   message: unknown
 ): message is { type: "HANAKO_SEND_QUEUE" } {
@@ -185,4 +198,17 @@ async function clearTranslationsInActiveTab(): Promise<
   return (await chrome.tabs.sendMessage(tab.id, {
     type: "HANAKO_CLEAR_TRANSLATIONS"
   })) as { ok: true; restored: number } | { ok: false; error: string };
+}
+
+async function getActiveTabJobState() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+  if (!tab?.id) {
+    return { error: "No active tab was available", ok: false };
+  }
+
+  return {
+    ok: true,
+    state: await getTabJobState(chrome.storage.local, tab.id)
+  };
 }

@@ -49,7 +49,7 @@ describe("queue state", () => {
     expect(await listQueuedImages(storage)).toEqual([]);
   });
 
-  it("keeps an exact cached duplicate from being queued twice", async () => {
+  it("appends every explicit queue action even when the image cache key matches", async () => {
     const storage = createMemoryStorage();
 
     await addQueuedImage(storage, {
@@ -65,7 +65,7 @@ describe("queue state", () => {
       sourceUrl: "https://manga.example/1.png"
     });
 
-    expect(await getQueuedImageCount(storage)).toBe(1);
+    expect(await getQueuedImageCount(storage)).toBe(2);
   });
 });
 

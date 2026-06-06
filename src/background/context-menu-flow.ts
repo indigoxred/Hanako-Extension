@@ -40,8 +40,15 @@ export type ContextMenuTranslationResult =
   | { ok: false; error: string; jobId?: string; status?: "failed" };
 
 export interface ReplaceContextImageInput {
+  domIndex?: number;
+  domId?: string;
   renderedUrl: string;
   sourceUrl: string;
+}
+
+export interface ContextImageBytesPayload extends ImageBytesPayload {
+  domIndex?: number;
+  domId?: string;
 }
 
 export interface CaptureContextImageInput {
@@ -54,7 +61,7 @@ export interface CaptureContextImageInput {
 export interface TranslateContextMenuImageDependencies {
   captureImageBytes?: (
     input: CaptureContextImageInput
-  ) => Promise<ImageBytesPayload | undefined>;
+  ) => Promise<ContextImageBytesPayload | undefined>;
   context: ContextMenuImageContext;
   fetchImageBytes?: FetchImageBytes;
   loadSettings?: () => Promise<ExtensionSettings>;
@@ -160,6 +167,8 @@ export async function translateContextMenuImage({
       jobId: detail.job.id,
       pageId: page.id
     }),
+    ...(image.domId ? { domId: image.domId } : {}),
+    ...(image.domIndex === undefined ? {} : { domIndex: image.domIndex }),
     sourceUrl: context.srcUrl
   });
 
@@ -173,7 +182,7 @@ export async function translateContextMenuImage({
 
 export async function captureContextImageBytes(
   input: CaptureContextImageInput
-): Promise<ImageBytesPayload | undefined> {
+): Promise<ContextImageBytesPayload | undefined> {
   await chrome.scripting.executeScript({
     files: ["content/content-entry.js"],
     target: { tabId: input.tabId }
@@ -193,12 +202,22 @@ export async function captureContextImageBytes(
     type: "HANAKO_LOCATE_IMAGE_ELEMENT"
   })) as unknown;
 
-  return isLocatedImageElementResponse(located)
-    ? captureVisibleElementBitmap({
-        rect: located.rect,
-        sourceUrl: input.sourceUrl,
-        ...(input.windowId === undefined ? {} : { windowId: input.windowId })
-      })
+  if (!isLocatedImageElementResponse(located)) {
+    return undefined;
+  }
+
+  const captured = await captureVisibleElementBitmap({
+    rect: located.rect,
+    sourceUrl: input.sourceUrl,
+    ...(input.windowId === undefined ? {} : { windowId: input.windowId })
+  });
+
+  return captured
+    ? {
+        ...captured,
+        domId: located.rect.domId,
+        domIndex: located.rect.domIndex
+      }
     : undefined;
 }
 
@@ -228,7 +247,7 @@ function compactImageCandidate(input: {
 }
 
 function isCaptureImageBytesResponse(response: unknown): response is {
-  image: ImageBytesPayload;
+  image: ContextImageBytesPayload;
   ok: true;
 } {
   return (
@@ -248,7 +267,7 @@ function isCaptureImageBytesResponse(response: unknown): response is {
 
 function isLocatedImageElementResponse(response: unknown): response is {
   ok: true;
-  rect: VisibleElementRect;
+  rect: VisibleElementRect & { domIndex: number; domId: string };
 } {
   return (
     typeof response === "object" &&
@@ -263,17 +282,19 @@ function isLocatedImageElementResponse(response: unknown): response is {
     isNumberProperty(response.rect, "top") &&
     isNumberProperty(response.rect, "viewportHeight") &&
     isNumberProperty(response.rect, "viewportWidth") &&
-    isNumberProperty(response.rect, "width")
+    isNumberProperty(response.rect, "width") &&
+    isNumberProperty(response.rect, "domIndex") &&
+    "domId" in response.rect &&
+    typeof response.rect.domId === "string"
   );
 }
 
 function isNumberProperty(
   value: object,
-  property: keyof VisibleElementRect
+  property: keyof VisibleElementRect | "domIndex"
 ): boolean {
   return (
     property in value &&
-    typeof (value as Record<keyof VisibleElementRect, unknown>)[property] ===
-      "number"
+    typeof (value as Record<string, unknown>)[property] === "number"
   );
 }

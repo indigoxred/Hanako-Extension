@@ -33,14 +33,6 @@ export async function addQueuedImage(
 ): Promise<{ count: number; item: QueuedImage }> {
   const items = await listQueuedImages(storage);
 
-  if (input.cacheKey) {
-    const existing = items.find((item) => item.cacheKey === input.cacheKey);
-
-    if (existing) {
-      return { count: items.length, item: existing };
-    }
-  }
-
   if (items.length >= MAX_QUEUE_ITEMS) {
     throw new Error(`Hanako queue is limited to ${MAX_QUEUE_ITEMS} images`);
   }

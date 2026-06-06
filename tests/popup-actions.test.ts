@@ -5,6 +5,7 @@ import {
   createClearTranslationsMessage,
   createDetectActiveTabMessage,
   createDetectImagesMessage,
+  createGetActiveTabJobStateMessage,
   createGetQueueStatusMessage,
   createOpenJobUrl,
   createOpenWebUiUrl,
@@ -49,6 +50,9 @@ describe("popup actions", () => {
   it("builds queue and clear runtime messages", () => {
     expect(createGetQueueStatusMessage()).toEqual({
       type: "HANAKO_GET_QUEUE_STATUS"
+    });
+    expect(createGetActiveTabJobStateMessage()).toEqual({
+      type: "HANAKO_GET_ACTIVE_TAB_JOB_STATE"
     });
     expect(createSendQueueMessage()).toEqual({ type: "HANAKO_SEND_QUEUE" });
     expect(createClearQueueMessage()).toEqual({ type: "HANAKO_CLEAR_QUEUE" });

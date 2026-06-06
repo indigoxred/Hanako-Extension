@@ -2,11 +2,15 @@ import { calculateBoundedImageSize } from "../background/image-resize.js";
 
 export interface CapturedImageBytes {
   bytesBase64: string;
+  domIndex?: number;
+  domId?: string;
   mediaType: string;
   name?: string;
 }
 
 export interface LocatedImageElementRect {
+  domIndex: number;
+  domId: string;
   height: number;
   left: number;
   top: number;
@@ -19,20 +23,36 @@ export async function captureImageBytesBySource(
   sourceUrl: string,
   documentRef: Document = document
 ): Promise<CapturedImageBytes | undefined> {
-  const image = Array.from(documentRef.querySelectorAll("img")).find(
-    (candidate) => imageMatchesSource(candidate, sourceUrl, documentRef)
+  const images = Array.from(documentRef.querySelectorAll("img"));
+  const domIndex = images.findIndex((candidate) =>
+    imageMatchesSource(candidate, sourceUrl, documentRef)
   );
+  const image = domIndex >= 0 ? images[domIndex] : undefined;
 
-  return image ? captureImageBitmapFromElement(image, documentRef) : undefined;
+  if (!image) {
+    return undefined;
+  }
+
+  const captured = await captureImageBitmapFromElement(image, documentRef);
+
+  return captured
+    ? {
+        ...captured,
+        domId: ensureContextDomId(image, domIndex),
+        domIndex
+      }
+    : undefined;
 }
 
 export function locateImageElementBySource(
   sourceUrl: string,
   documentRef: Document = document
 ): LocatedImageElementRect | undefined {
-  const image = Array.from(documentRef.querySelectorAll("img")).find(
-    (candidate) => imageMatchesSource(candidate, sourceUrl, documentRef)
+  const images = Array.from(documentRef.querySelectorAll("img"));
+  const domIndex = images.findIndex((candidate) =>
+    imageMatchesSource(candidate, sourceUrl, documentRef)
   );
+  const image = domIndex >= 0 ? images[domIndex] : undefined;
 
   if (!image) {
     return undefined;
@@ -42,6 +62,8 @@ export function locateImageElementBySource(
   const view = documentRef.defaultView ?? window;
 
   return {
+    domId: ensureContextDomId(image, domIndex),
+    domIndex,
     height: rect.height,
     left: rect.left,
     top: rect.top,
@@ -125,6 +147,14 @@ function imageMatchesSource(
       toAbsoluteUrl(source, documentRef) ===
         toAbsoluteUrl(sourceUrl, documentRef)
   );
+}
+
+function ensureContextDomId(image: HTMLImageElement, domIndex: number): string {
+  if (!image.dataset.hanakoDomId) {
+    image.dataset.hanakoDomId = `hanako-context-img-${domIndex}`;
+  }
+
+  return image.dataset.hanakoDomId;
 }
 
 function toAbsoluteUrl(

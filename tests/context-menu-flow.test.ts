@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { translateContextMenuImage } from "../src/background/context-menu-flow.js";
+import {
+  translateContextMenuImage,
+  type ContextImageBytesPayload
+} from "../src/background/context-menu-flow.js";
 
 describe("context menu translation flow", () => {
   it("prefers bytes captured from the clicked page image before fetching the URL", async () => {
@@ -69,12 +72,15 @@ describe("context menu translation flow", () => {
         srcUrl: "https://manga.example/page-1.png",
         tabId: 12
       },
-      fetchImageBytes: async (image) => {
-        expect(image.url).toBe("https://manga.example/page-1.png");
-        return {
+      captureImageBytes: async () =>
+        ({
           bytesBase64: "cGFnZSAx",
+          domId: "hanako-context-img-4",
+          domIndex: 4,
           mediaType: "image/png"
-        };
+        }) satisfies ContextImageBytesPayload,
+      fetchImageBytes: async (image) => {
+        throw new Error(`Unexpected URL fetch for ${image.url}`);
       },
       loadSettings: async () => ({
         hanakoBaseUrl: "http://localhost:8787",
@@ -119,6 +125,8 @@ describe("context menu translation flow", () => {
     expect(replacements).toEqual([
       {
         replacement: {
+          domId: "hanako-context-img-4",
+          domIndex: 4,
           renderedUrl:
             "http://localhost:8787/api/jobs/job_1/pages/page_1/rendered",
           sourceUrl: "https://manga.example/page-1.png"
