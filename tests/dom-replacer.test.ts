@@ -98,6 +98,27 @@ describe("content DOM replacer", () => {
     );
   });
 
+  it("does not reapply while the src attribute already points at the rendered image", () => {
+    const documentRef = document.implementation.createHTMLDocument();
+    documentRef.body.innerHTML = `
+      <img
+        data-hanako-original-src="https://manga.example/page-1.png"
+        data-hanako-rendered-src="http://hanako.test/rendered.png"
+        src="http://hanako.test/rendered.png"
+        width="800"
+        height="1200"
+      />
+    `;
+    const image = documentRef.querySelector("img");
+    Object.defineProperty(image, "currentSrc", {
+      configurable: true,
+      value: "https://manga.example/page-1.png"
+    });
+
+    expect(reapplyStoredReplacements(documentRef)).toEqual({ replaced: 0 });
+    expect(image?.getAttribute("src")).toBe("http://hanako.test/rendered.png");
+  });
+
   it("ignores replacement instructions for missing DOM indexes", () => {
     const documentRef = document.implementation.createHTMLDocument();
     documentRef.body.innerHTML = `

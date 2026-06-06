@@ -27,6 +27,10 @@ export function replaceDetectedImages(
       continue;
     }
 
+    if (isRenderedImageApplied(image, replacement.renderedUrl)) {
+      continue;
+    }
+
     const currentSrc =
       image.currentSrc || image.src || image.getAttribute("src") || "";
     image.dataset.hanakoOriginalSrc =
@@ -46,19 +50,24 @@ export function replaceDetectedImages(
 export function reapplyStoredReplacements(
   documentRef: Document = document
 ): ImageReplacementResult {
+  return reapplyStoredReplacementTargets(
+    Array.from(documentRef.querySelectorAll("img"))
+  );
+}
+
+function reapplyStoredReplacementTargets(
+  images: HTMLImageElement[]
+): ImageReplacementResult {
   let replaced = 0;
 
-  for (const image of Array.from(documentRef.querySelectorAll("img"))) {
+  for (const image of images) {
     const renderedUrl = image.dataset.hanakoRenderedSrc;
 
     if (!renderedUrl) {
       continue;
     }
 
-    const currentSrc =
-      image.currentSrc || image.src || image.getAttribute("src") || "";
-
-    if (currentSrc === renderedUrl) {
+    if (isRenderedImageApplied(image, renderedUrl)) {
       continue;
     }
 
@@ -104,8 +113,46 @@ export function clearDetectedImageReplacements(
 export function observeReplacementMutations(
   documentRef: Document = document
 ): MutationObserver {
-  const observer = new MutationObserver(() => {
-    reapplyStoredReplacements(documentRef);
+  const pendingImages = new Set<HTMLImageElement>();
+  let scheduled = false;
+
+  const flush = () => {
+    scheduled = false;
+    const images = Array.from(pendingImages);
+    pendingImages.clear();
+    reapplyStoredReplacementTargets(images);
+  };
+
+  const scheduleFlush = () => {
+    if (scheduled) {
+      return;
+    }
+
+    scheduled = true;
+    const defaultView = documentRef.defaultView;
+    if (defaultView?.requestAnimationFrame) {
+      defaultView.requestAnimationFrame(flush);
+      return;
+    }
+
+    setTimeout(flush, 0);
+  };
+
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === "attributes") {
+        addReplacementImageTarget(mutation.target, pendingImages);
+        continue;
+      }
+
+      for (const node of Array.from(mutation.addedNodes)) {
+        addReplacementImageTarget(node, pendingImages);
+      }
+    }
+
+    if (pendingImages.size > 0) {
+      scheduleFlush();
+    }
   });
   observer.observe(documentRef.body, {
     attributeFilter: ["src", "srcset"],
@@ -114,6 +161,33 @@ export function observeReplacementMutations(
     subtree: true
   });
   return observer;
+}
+
+function addReplacementImageTarget(
+  node: Node,
+  targets: Set<HTMLImageElement>
+): void {
+  if (node instanceof HTMLImageElement) {
+    targets.add(node);
+    return;
+  }
+
+  if (!(node instanceof Element)) {
+    return;
+  }
+
+  for (const image of Array.from(node.querySelectorAll("img"))) {
+    targets.add(image);
+  }
+}
+
+function isRenderedImageApplied(
+  image: HTMLImageElement,
+  renderedUrl: string
+): boolean {
+  return [image.getAttribute("src"), image.src, image.currentSrc].includes(
+    renderedUrl
+  );
 }
 
 function findReplacementTarget(
