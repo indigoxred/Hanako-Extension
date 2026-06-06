@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createClearQueueMessage,
+  createClearTranslationsMessage,
   createDetectActiveTabMessage,
   createDetectImagesMessage,
+  createGetQueueStatusMessage,
   createOpenJobUrl,
   createOpenWebUiUrl,
+  createSendQueueMessage,
   createTranslateActiveTabMessage
 } from "../src/popup/popup-actions.js";
 
@@ -40,5 +44,16 @@ describe("popup actions", () => {
         jobId: "job_1"
       })
     ).toBe("http://localhost:8787/jobs/job_1");
+  });
+
+  it("builds queue and clear runtime messages", () => {
+    expect(createGetQueueStatusMessage()).toEqual({
+      type: "HANAKO_GET_QUEUE_STATUS"
+    });
+    expect(createSendQueueMessage()).toEqual({ type: "HANAKO_SEND_QUEUE" });
+    expect(createClearQueueMessage()).toEqual({ type: "HANAKO_CLEAR_QUEUE" });
+    expect(createClearTranslationsMessage()).toEqual({
+      type: "HANAKO_CLEAR_TRANSLATIONS_ACTIVE_TAB"
+    });
   });
 });

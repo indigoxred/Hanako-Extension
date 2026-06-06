@@ -14,6 +14,22 @@ export interface TranslateActiveTabMessage {
   type: "HANAKO_TRANSLATE_ACTIVE_TAB";
 }
 
+export interface GetQueueStatusMessage {
+  type: "HANAKO_GET_QUEUE_STATUS";
+}
+
+export interface SendQueueMessage {
+  type: "HANAKO_SEND_QUEUE";
+}
+
+export interface ClearQueueMessage {
+  type: "HANAKO_CLEAR_QUEUE";
+}
+
+export interface ClearTranslationsActiveTabMessage {
+  type: "HANAKO_CLEAR_TRANSLATIONS_ACTIVE_TAB";
+}
+
 export function createOpenWebUiUrl(
   settings: Pick<ExtensionSettings, "hanakoBaseUrl">
 ): string {
@@ -39,4 +55,20 @@ export function createDetectActiveTabMessage(): DetectActiveTabMessage {
 
 export function createTranslateActiveTabMessage(): TranslateActiveTabMessage {
   return { type: "HANAKO_TRANSLATE_ACTIVE_TAB" };
+}
+
+export function createGetQueueStatusMessage(): GetQueueStatusMessage {
+  return { type: "HANAKO_GET_QUEUE_STATUS" };
+}
+
+export function createSendQueueMessage(): SendQueueMessage {
+  return { type: "HANAKO_SEND_QUEUE" };
+}
+
+export function createClearQueueMessage(): ClearQueueMessage {
+  return { type: "HANAKO_CLEAR_QUEUE" };
+}
+
+export function createClearTranslationsMessage(): ClearTranslationsActiveTabMessage {
+  return { type: "HANAKO_CLEAR_TRANSLATIONS_ACTIVE_TAB" };
 }

@@ -30,6 +30,30 @@ describe("visible tab image capture", () => {
     });
   });
 
+  it("bounds oversized output dimensions while preserving source crop dimensions", () => {
+    expect(
+      calculateVisibleCrop({
+        bitmapHeight: 4000,
+        bitmapWidth: 4000,
+        rect: {
+          height: 1000,
+          left: 0,
+          top: 0,
+          viewportHeight: 1000,
+          viewportWidth: 1000,
+          width: 1000
+        }
+      })
+    ).toEqual({
+      outputHeight: 1800,
+      outputWidth: 1800,
+      sourceHeight: 4000,
+      sourceWidth: 4000,
+      sourceX: 0,
+      sourceY: 0
+    });
+  });
+
   it("crops the visible tab screenshot into PNG bytes", async () => {
     const drawCalls: unknown[][] = [];
     const result = await captureVisibleElementBitmap(

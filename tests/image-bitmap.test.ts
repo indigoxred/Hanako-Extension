@@ -53,6 +53,52 @@ describe("content image bitmap capture", () => {
     expect(drawCalls).toHaveLength(1);
   });
 
+  it("bounds oversized image capture canvas dimensions", async () => {
+    let canvasWidth = 0;
+    let canvasHeight = 0;
+    const image = document.createElement("img");
+    const documentRef = {
+      createElement: () => {
+        const canvas = {
+          getContext: () => ({
+            drawImage: () => undefined
+          }),
+          get height() {
+            return canvasHeight;
+          },
+          set height(value: number) {
+            canvasHeight = value;
+          },
+          toBlob: (callback: BlobCallback, type?: string) => {
+            callback(new Blob([new Uint8Array([1])], { type }));
+          },
+          get width() {
+            return canvasWidth;
+          },
+          set width(value: number) {
+            canvasWidth = value;
+          }
+        };
+        return canvas;
+      },
+      location: { href: "http://localhost:3000/" }
+    } as unknown as Document;
+
+    Object.defineProperty(image, "naturalHeight", {
+      configurable: true,
+      value: 2000
+    });
+    Object.defineProperty(image, "naturalWidth", {
+      configurable: true,
+      value: 4000
+    });
+
+    await captureImageBitmapFromElement(image, documentRef);
+
+    expect(canvasWidth).toBe(1800);
+    expect(canvasHeight).toBe(900);
+  });
+
   it("captures the matching image element for a source URL", async () => {
     document.body.innerHTML = `
       <img src="https://manga.example/page-1.jpg" width="800" height="1200">

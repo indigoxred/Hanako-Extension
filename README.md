@@ -15,10 +15,11 @@ pnpm test
 The build output is written to `dist/`. Load that directory through Chromium's
 unpacked extension flow.
 
-Because the extension fetches clicked image bytes in its service worker and can
-submit jobs to any user-configured Hanako server, the manifest declares host
-access for all URLs. After rebuilding a local unpacked install, reload the
-extension in `chrome://extensions` before testing.
+Because the extension fetches clicked image bytes in its service worker, queues
+captured image bytes locally, and can submit jobs to any user-configured Hanako
+server, the manifest declares host access for all URLs and `unlimitedStorage`.
+After rebuilding a local unpacked install, reload the extension in
+`chrome://extensions` before testing.
 
 ## Release Packages
 
@@ -33,9 +34,30 @@ publishing a release.
 The extension defaults to `http://localhost:8787` and stores the configured
 Hanako base URL plus target language in extension storage.
 
+The Hanako base URL must include protocol, host, and port. Valid examples:
+
+- `http://localhost:8787`
+- `http://192.168.50.138:8787`
+
+Invalid or portless values are rejected and do not overwrite the previous saved
+server.
+
 Normal translation flows do not force-open the Hanako WebUI. The popup still offers
 an explicit WebUI link, but active-tab and context-menu translation submit auto-mode
 jobs, poll until completion, and replace rendered images in-place.
+
+## Context Menu
+
+- `Translate with Hanako` translates the right-clicked image and replaces that
+  image in the page after Hanako finishes rendering.
+- `Queue to Hanako` stores the right-clicked image in the extension queue and
+  increments the extension badge/menu counter.
+- `Queue to Hanako > Send queue` sends queued images to Hanako as one normal
+  multi-page job in queue order. Queue jobs do not replace browser images; use
+  Hanako's WebUI/current job view to review and download the output.
+
+The popup also exposes queue count, send queue, clear queue, clear translations,
+and WebUI/current-job links.
 
 Image forwarding prefers browser-side bytes:
 

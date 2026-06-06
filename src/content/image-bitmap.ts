@@ -1,3 +1,5 @@
+import { calculateBoundedImageSize } from "../background/image-resize.js";
+
 export interface CapturedImageBytes {
   bytesBase64: string;
   mediaType: string;
@@ -53,14 +55,18 @@ export async function captureImageBitmapFromElement(
   image: HTMLImageElement,
   documentRef: Document = document
 ): Promise<CapturedImageBytes | undefined> {
-  const width = image.naturalWidth || image.width;
-  const height = image.naturalHeight || image.height;
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
 
-  if (width <= 0 || height <= 0) {
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
     return undefined;
   }
 
   try {
+    const { height, width } = calculateBoundedImageSize({
+      height: sourceHeight,
+      width: sourceWidth
+    });
     const canvas = documentRef.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -71,7 +77,17 @@ export async function captureImageBitmapFromElement(
       return undefined;
     }
 
-    context.drawImage(image, 0, 0, width, height);
+    context.drawImage(
+      image,
+      0,
+      0,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      width,
+      height
+    );
     const blob = await canvasToBlob(canvas, "image/png");
 
     if (!blob) {

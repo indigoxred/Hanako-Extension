@@ -9,7 +9,8 @@ describe("extension manifest", () => {
       "storage",
       "contextMenus",
       "activeTab",
-      "scripting"
+      "scripting",
+      "unlimitedStorage"
     ]);
     expect(manifest.host_permissions).toEqual(["<all_urls>"]);
     expect(manifest).not.toHaveProperty("optional_host_permissions");

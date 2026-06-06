@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  clearDetectedImageReplacements,
   reapplyStoredReplacements,
   replaceDetectedImages
 } from "../src/content/dom-replacer.js";
@@ -112,5 +113,37 @@ describe("content DOM replacer", () => {
     expect(documentRef.querySelector("img")?.getAttribute("src")).toBe(
       "https://manga.example/page-1.png"
     );
+  });
+
+  it("restores original image sources and picture sources", () => {
+    const documentRef = document.implementation.createHTMLDocument();
+    documentRef.body.innerHTML = `
+      <picture>
+        <source srcset="https://manga.example/page-1-large.webp 2x" />
+        <img
+          src="https://manga.example/page-1.png"
+          srcset="https://manga.example/page-1-large.png 2x"
+        />
+      </picture>
+    `;
+
+    replaceDetectedImages(
+      [{ domIndex: 0, renderedUrl: "http://localhost:8787/rendered.png" }],
+      documentRef
+    );
+
+    expect(clearDetectedImageReplacements(documentRef)).toEqual({
+      restored: 1
+    });
+    const image = documentRef.querySelector("img");
+    const source = documentRef.querySelector("source");
+    expect(image?.getAttribute("src")).toBe("https://manga.example/page-1.png");
+    expect(image?.getAttribute("srcset")).toBe(
+      "https://manga.example/page-1-large.png 2x"
+    );
+    expect(source?.getAttribute("srcset")).toBe(
+      "https://manga.example/page-1-large.webp 2x"
+    );
+    expect(reapplyStoredReplacements(documentRef)).toEqual({ replaced: 0 });
   });
 });

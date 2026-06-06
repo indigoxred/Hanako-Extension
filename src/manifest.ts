@@ -2,7 +2,13 @@ const manifest = {
   manifest_version: 3,
   name: "Hanako Manga Translator",
   version: "0.1.0",
-  permissions: ["storage", "contextMenus", "activeTab", "scripting"],
+  permissions: [
+    "storage",
+    "contextMenus",
+    "activeTab",
+    "scripting",
+    "unlimitedStorage"
+  ],
   optional_permissions: ["notifications"],
   host_permissions: ["<all_urls>"],
   background: {

@@ -9,6 +9,10 @@ export interface ImageReplacementResult {
   replaced: number;
 }
 
+export interface ImageRestoreResult {
+  restored: number;
+}
+
 export function replaceDetectedImages(
   replacements: ImageReplacement[],
   documentRef: Document = document
@@ -65,6 +69,36 @@ export function reapplyStoredReplacements(
   }
 
   return { replaced };
+}
+
+export function clearDetectedImageReplacements(
+  documentRef: Document = document
+): ImageRestoreResult {
+  let restored = 0;
+
+  for (const image of Array.from(documentRef.querySelectorAll("img"))) {
+    if (!image.dataset.hanakoRenderedSrc) {
+      continue;
+    }
+
+    if (image.dataset.hanakoOriginalSrc) {
+      image.src = image.dataset.hanakoOriginalSrc;
+    }
+
+    if (image.dataset.hanakoOriginalSrcset) {
+      image.setAttribute("srcset", image.dataset.hanakoOriginalSrcset);
+    } else {
+      image.removeAttribute("srcset");
+    }
+
+    restorePictureSources(image);
+    delete image.dataset.hanakoOriginalSrc;
+    delete image.dataset.hanakoOriginalSrcset;
+    delete image.dataset.hanakoRenderedSrc;
+    restored += 1;
+  }
+
+  return { restored };
 }
 
 export function observeReplacementMutations(
@@ -132,5 +166,21 @@ function disablePictureSources(image: HTMLImageElement): void {
       source.getAttribute("srcset") ||
       "";
     source.removeAttribute("srcset");
+  }
+}
+
+function restorePictureSources(image: HTMLImageElement): void {
+  const picture = image.closest("picture");
+
+  if (!picture) {
+    return;
+  }
+
+  for (const source of Array.from(picture.querySelectorAll("source"))) {
+    if (source.dataset.hanakoOriginalSrcset) {
+      source.setAttribute("srcset", source.dataset.hanakoOriginalSrcset);
+    }
+
+    delete source.dataset.hanakoOriginalSrcset;
   }
 }

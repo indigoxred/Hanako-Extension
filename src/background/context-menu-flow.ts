@@ -70,7 +70,7 @@ export interface TranslateContextMenuImageDependencies {
 }
 
 export async function translateContextMenuImage({
-  captureImageBytes = defaultCaptureImageBytes,
+  captureImageBytes = captureContextImageBytes,
   context,
   fetchImageBytes,
   loadSettings = loadExtensionSettings,
@@ -171,7 +171,7 @@ export async function translateContextMenuImage({
   };
 }
 
-async function defaultCaptureImageBytes(
+export async function captureContextImageBytes(
   input: CaptureContextImageInput
 ): Promise<ImageBytesPayload | undefined> {
   await chrome.scripting.executeScript({

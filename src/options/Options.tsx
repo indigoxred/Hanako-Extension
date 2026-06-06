@@ -65,7 +65,7 @@ function OptionsApp() {
         </label>
         <button type="submit">Save</button>
       </form>
-      {status ? <p>{status}</p> : null}
+      {status ? <p role="status">{status}</p> : null}
     </main>
   );
 }

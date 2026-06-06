@@ -32,6 +32,7 @@
 ## Task 1: Guard Hanako Base URL Saves
 
 **Files:**
+
 - Modify: `src/options/extension-settings.ts`
 - Modify: `src/options/Options.tsx`
 - Test: `tests/extension-settings.test.ts`
@@ -115,7 +116,11 @@ export function validateHanakoBaseUrl(
 ): HanakoBaseUrlValidationResult {
   try {
     const url = new URL(value.trim());
-    if (!["http:", "https:"].includes(url.protocol) || !url.hostname || !url.port) {
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      !url.hostname ||
+      !url.port
+    ) {
       return {
         error: "Hanako base URL must include http(s), host, and port",
         ok: false
@@ -161,14 +166,18 @@ const [message, setMessage] = useState("");
 void saveExtensionSettings(getDefaultStorage(), settings)
   .then(() => setMessage("Saved"))
   .catch((error: unknown) => {
-    setMessage(error instanceof Error ? error.message : "Settings were not saved");
+    setMessage(
+      error instanceof Error ? error.message : "Settings were not saved"
+    );
   });
 ```
 
 Render the message near the Save button:
 
 ```tsx
-{message ? <p role="status">{message}</p> : null}
+{
+  message ? <p role="status">{message}</p> : null;
+}
 ```
 
 - [ ] **Step 5: Verify Task 1**
@@ -185,6 +194,7 @@ Expected: PASS.
 ## Task 2: Add Queue State Storage
 
 **Files:**
+
 - Create: `src/background/queue-state.ts`
 - Test: `tests/queue-state.test.ts`
 
@@ -225,10 +235,9 @@ describe("queue state", () => {
     });
 
     expect(await getQueuedImageCount(storage)).toBe(2);
-    expect((await listQueuedImages(storage)).map((item) => item.sourceUrl)).toEqual([
-      "https://manga.example/1.png",
-      "https://manga.example/2.png"
-    ]);
+    expect(
+      (await listQueuedImages(storage)).map((item) => item.sourceUrl)
+    ).toEqual(["https://manga.example/1.png", "https://manga.example/2.png"]);
   });
 
   it("clears queued images", async () => {
@@ -252,7 +261,10 @@ function createMemoryStorage(): QueueStorageArea {
     async get(keys) {
       const keyList = Array.isArray(keys) ? keys : Object.keys(keys);
       return Object.fromEntries(
-        keyList.map((key) => [key, data.get(key) ?? (!Array.isArray(keys) ? keys[key] : undefined)])
+        keyList.map((key) => [
+          key,
+          data.get(key) ?? (!Array.isArray(keys) ? keys[key] : undefined)
+        ])
       );
     },
     async set(items) {
@@ -290,7 +302,9 @@ export interface QueuedImage extends QueuedImageInput {
 }
 
 export interface QueueStorageArea {
-  get(keys: string[] | Record<string, unknown>): Promise<Record<string, unknown>>;
+  get(
+    keys: string[] | Record<string, unknown>
+  ): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
 }
 
@@ -360,6 +374,7 @@ Expected: PASS.
 ## Task 3: Add Action Badge Status Helpers
 
 **Files:**
+
 - Create: `src/background/action-status.ts`
 - Test: `tests/action-status.test.ts`
 
@@ -370,7 +385,10 @@ Create `tests/action-status.test.ts`:
 ```ts
 import { describe, expect, it } from "vitest";
 
-import { setActionStatus, updateQueueBadge } from "../src/background/action-status.js";
+import {
+  setActionStatus,
+  updateQueueBadge
+} from "../src/background/action-status.js";
 
 describe("action status", () => {
   it("shows queued image count on the action badge", async () => {
@@ -403,7 +421,9 @@ describe("action status", () => {
 
 function createActionRecorder(calls: unknown[]) {
   return {
-    async setBadgeBackgroundColor(input: chrome.action.BadgeBackgroundColorDetails) {
+    async setBadgeBackgroundColor(
+      input: chrome.action.BadgeBackgroundColorDetails
+    ) {
       calls.push(["setBadgeBackgroundColor", input]);
     },
     async setBadgeText(input: chrome.action.BadgeTextDetails) {
@@ -474,6 +494,7 @@ Expected: PASS.
 ## Task 4: Implement Context Menu Shape
 
 **Files:**
+
 - Modify: `src/background/context-menu.ts`
 - Test: `tests/context-menu.test.ts`
 
@@ -528,7 +549,10 @@ describe("context menus", () => {
     await updateQueueMenuTitle(
       {
         contextMenus: {
-          async update(id: string | number, input: chrome.contextMenus.UpdateProperties) {
+          async update(
+            id: string | number,
+            input: chrome.contextMenus.UpdateProperties
+          ) {
             updates.push([id, input]);
           }
         }
@@ -536,7 +560,9 @@ describe("context menus", () => {
       2
     );
 
-    expect(updates).toEqual([[QUEUE_IMAGE_MENU_ID, { title: "Queue to Hanako (2)" }]]);
+    expect(updates).toEqual([
+      [QUEUE_IMAGE_MENU_ID, { title: "Queue to Hanako (2)" }]
+    ]);
   });
 });
 ```
@@ -600,6 +626,7 @@ Expected: PASS.
 ## Task 5: Add Queue Flow
 
 **Files:**
+
 - Create: `src/background/queue-flow.ts`
 - Test: `tests/queue-flow.test.ts`
 
@@ -686,7 +713,10 @@ function createMemoryStorage(): QueueStorageArea {
     async get(keys) {
       const keyList = Array.isArray(keys) ? keys : Object.keys(keys);
       return Object.fromEntries(
-        keyList.map((key) => [key, data.get(key) ?? (!Array.isArray(keys) ? keys[key] : undefined)])
+        keyList.map((key) => [
+          key,
+          data.get(key) ?? (!Array.isArray(keys) ? keys[key] : undefined)
+        ])
       );
     },
     async set(items) {
@@ -745,7 +775,9 @@ export interface QueueContextMenuImageInput {
 export interface SendQueuedImagesInput {
   loadSettings?: () => Promise<ExtensionSettings>;
   storage?: QueueStorageArea;
-  translatePage?: (input: TranslatePageInput) => Promise<{ job: { id: string } }>;
+  translatePage?: (
+    input: TranslatePageInput
+  ) => Promise<{ job: { id: string } }>;
 }
 
 export async function queueContextMenuImage({
@@ -753,8 +785,10 @@ export async function queueContextMenuImage({
   context,
   storage
 }: QueueContextMenuImageInput): Promise<QueueImageResult> {
-  if (!context.srcUrl) return { error: "No clicked image URL was available", ok: false };
-  if (!context.tabId) return { error: "No source tab was available", ok: false };
+  if (!context.srcUrl)
+    return { error: "No clicked image URL was available", ok: false };
+  if (!context.tabId)
+    return { error: "No source tab was available", ok: false };
 
   const captured = await captureImageBytes({
     ...(context.pageUrl ? { pageUrl: context.pageUrl } : {}),
@@ -764,7 +798,10 @@ export async function queueContextMenuImage({
   }).catch(() => undefined);
 
   if (!captured?.bytesBase64 || !captured.mediaType) {
-    return { error: "The extension could not extract bytes for this image", ok: false };
+    return {
+      error: "The extension could not extract bytes for this image",
+      ok: false
+    };
   }
 
   const queued = await addQueuedImage(storage, {
@@ -824,6 +861,7 @@ Expected: PASS.
 ## Task 6: Add Restore/Clear Translation Flow
 
 **Files:**
+
 - Modify: `src/content/dom-replacer.ts`
 - Modify: `src/content/content-entry.ts`
 - Test: `tests/dom-replacer.test.ts`
@@ -857,8 +895,12 @@ it("restores original image sources and picture sources", () => {
   const image = documentRef.querySelector("img");
   const source = documentRef.querySelector("source");
   expect(image?.getAttribute("src")).toBe("https://manga.example/page-1.png");
-  expect(image?.getAttribute("srcset")).toBe("https://manga.example/page-1-large.png 2x");
-  expect(source?.getAttribute("srcset")).toBe("https://manga.example/page-1-large.webp 2x");
+  expect(image?.getAttribute("srcset")).toBe(
+    "https://manga.example/page-1-large.png 2x"
+  );
+  expect(source?.getAttribute("srcset")).toBe(
+    "https://manga.example/page-1-large.webp 2x"
+  );
   expect(reapplyStoredReplacements(documentRef)).toEqual({ replaced: 0 });
 });
 ```
@@ -959,6 +1001,7 @@ Expected: PASS.
 ## Task 7: Add Job State And Job Manager
 
 **Files:**
+
 - Create: `src/background/job-state.ts`
 - Create: `src/background/job-manager.ts`
 - Modify: `src/background/service-worker.ts`
@@ -1005,7 +1048,10 @@ function createMemoryStorage(): JobStateStorageArea {
     async get(keys) {
       const keyList = Array.isArray(keys) ? keys : Object.keys(keys);
       return Object.fromEntries(
-        keyList.map((key) => [key, data.get(key) ?? (!Array.isArray(keys) ? keys[key] : undefined)])
+        keyList.map((key) => [
+          key,
+          data.get(key) ?? (!Array.isArray(keys) ? keys[key] : undefined)
+        ])
       );
     },
     async set(items) {
@@ -1037,7 +1083,9 @@ export interface StoredJobState {
 }
 
 export interface JobStateStorageArea {
-  get(keys: string[] | Record<string, unknown>): Promise<Record<string, unknown>>;
+  get(
+    keys: string[] | Record<string, unknown>
+  ): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
 }
 
@@ -1057,7 +1105,10 @@ export async function setTabJobState(
   state: Omit<StoredJobState, "updatedAt"> | StoredJobState
 ): Promise<StoredJobState> {
   const all = await getAllJobState(storage);
-  const next = { ...state, updatedAt: "updatedAt" in state ? state.updatedAt : new Date().toISOString() };
+  const next = {
+    ...state,
+    updatedAt: "updatedAt" in state ? state.updatedAt : new Date().toISOString()
+  };
   await storage.set({
     [JOB_STATE_STORAGE_KEY]: { ...all, [String(tabId)]: next }
   });
@@ -1126,21 +1177,34 @@ describe("job manager", () => {
 Create `src/background/job-manager.ts`:
 
 ```ts
-import { setActionStatus as defaultSetActionStatus, updateQueueBadge } from "./action-status.js";
+import {
+  setActionStatus as defaultSetActionStatus,
+  updateQueueBadge
+} from "./action-status.js";
 import { translateContextMenuImage as defaultTranslateContextMenuImage } from "./context-menu-flow.js";
-import { sendQueuedImages as defaultSendQueuedImages, queueContextMenuImage as defaultQueueContextMenuImage } from "./queue-flow.js";
+import {
+  sendQueuedImages as defaultSendQueuedImages,
+  queueContextMenuImage as defaultQueueContextMenuImage
+} from "./queue-flow.js";
 import { translateActiveTab as defaultTranslateActiveTab } from "./translate-flow.js";
 
-import type { ContextMenuImageContext, ContextMenuTranslationResult } from "./context-menu-flow.js";
+import type {
+  ContextMenuImageContext,
+  ContextMenuTranslationResult
+} from "./context-menu-flow.js";
 import type { QueueImageResult, SendQueueResult } from "./queue-flow.js";
 import type { TranslateActiveTabResult } from "./translate-flow.js";
 
 export interface JobManagerDependencies {
-  queueContextMenuImage?: (input: { context: ContextMenuImageContext }) => Promise<QueueImageResult>;
+  queueContextMenuImage?: (input: {
+    context: ContextMenuImageContext;
+  }) => Promise<QueueImageResult>;
   sendQueuedImages?: () => Promise<SendQueueResult>;
   setActionStatus?: typeof defaultSetActionStatus;
   translateActiveTab?: () => Promise<TranslateActiveTabResult>;
-  translateContextMenuImage?: (input: { context: ContextMenuImageContext }) => Promise<ContextMenuTranslationResult>;
+  translateContextMenuImage?: (input: {
+    context: ContextMenuImageContext;
+  }) => Promise<ContextMenuTranslationResult>;
   updateQueueBadge?: typeof updateQueueBadge;
 }
 
@@ -1158,8 +1222,13 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
   return {
     translateActiveTab: () =>
       dedupe("active-tab", async () => {
-        await (dependencies.setActionStatus ?? defaultSetActionStatus)(undefined, "running");
-        const result = await (dependencies.translateActiveTab ?? defaultTranslateActiveTab)();
+        await (dependencies.setActionStatus ?? defaultSetActionStatus)(
+          undefined,
+          "running"
+        );
+        const result = await (
+          dependencies.translateActiveTab ?? defaultTranslateActiveTab
+        )();
         await (dependencies.setActionStatus ?? defaultSetActionStatus)(
           undefined,
           result.ok ? "success" : "error"
@@ -1167,26 +1236,46 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
         return result;
       }),
     translateContextMenuImage: (context: ContextMenuImageContext) =>
-      dedupe(`context:${context.tabId ?? "none"}:${context.srcUrl ?? "none"}`, async () => {
-        await (dependencies.setActionStatus ?? defaultSetActionStatus)(undefined, "running");
-        const result = await (dependencies.translateContextMenuImage ?? defaultTranslateContextMenuImage)({ context });
-        await (dependencies.setActionStatus ?? defaultSetActionStatus)(
-          undefined,
-          result.ok ? "success" : "error"
-        );
-        return result;
-      }),
+      dedupe(
+        `context:${context.tabId ?? "none"}:${context.srcUrl ?? "none"}`,
+        async () => {
+          await (dependencies.setActionStatus ?? defaultSetActionStatus)(
+            undefined,
+            "running"
+          );
+          const result = await (
+            dependencies.translateContextMenuImage ??
+            defaultTranslateContextMenuImage
+          )({ context });
+          await (dependencies.setActionStatus ?? defaultSetActionStatus)(
+            undefined,
+            result.ok ? "success" : "error"
+          );
+          return result;
+        }
+      ),
     queueContextMenuImage: async (context: ContextMenuImageContext) => {
-      const result = await (dependencies.queueContextMenuImage ?? ((input) => defaultQueueContextMenuImage(input)))({ context });
+      const result = await (
+        dependencies.queueContextMenuImage ??
+        ((input) => defaultQueueContextMenuImage(input))
+      )({ context });
       if (result.ok) {
-        await (dependencies.updateQueueBadge ?? updateQueueBadge)(undefined, result.count);
+        await (dependencies.updateQueueBadge ?? updateQueueBadge)(
+          undefined,
+          result.count
+        );
       }
       return result;
     },
     sendQueuedImages: () =>
       dedupe("send-queue", async () => {
-        await (dependencies.setActionStatus ?? defaultSetActionStatus)(undefined, "running");
-        const result = await (dependencies.sendQueuedImages ?? defaultSendQueuedImages)();
+        await (dependencies.setActionStatus ?? defaultSetActionStatus)(
+          undefined,
+          "running"
+        );
+        const result = await (
+          dependencies.sendQueuedImages ?? defaultSendQueuedImages
+        )();
         await (dependencies.setActionStatus ?? defaultSetActionStatus)(
           undefined,
           result.ok ? "success" : "error"
@@ -1246,6 +1335,7 @@ Expected: PASS.
 ## Task 8: Add Popup Queue And Status Controls
 
 **Files:**
+
 - Modify: `src/popup/popup-actions.ts`
 - Modify: `src/popup/Popup.tsx`
 - Test: `tests/popup-actions.test.ts`
@@ -1263,10 +1353,14 @@ import {
 } from "../src/popup/popup-actions.js";
 
 it("builds queue and clear runtime messages", () => {
-  expect(createGetQueueStatusMessage()).toEqual({ type: "HANAKO_GET_QUEUE_STATUS" });
+  expect(createGetQueueStatusMessage()).toEqual({
+    type: "HANAKO_GET_QUEUE_STATUS"
+  });
   expect(createSendQueueMessage()).toEqual({ type: "HANAKO_SEND_QUEUE" });
   expect(createClearQueueMessage()).toEqual({ type: "HANAKO_CLEAR_QUEUE" });
-  expect(createClearTranslationsMessage()).toEqual({ type: "HANAKO_CLEAR_TRANSLATIONS_ACTIVE_TAB" });
+  expect(createClearTranslationsMessage()).toEqual({
+    type: "HANAKO_CLEAR_TRANSLATIONS_ACTIVE_TAB"
+  });
 });
 ```
 
@@ -1348,6 +1442,7 @@ Expected: PASS.
 ## Task 9: Add Image Resize And Translation Cache Helpers
 
 **Files:**
+
 - Create: `src/background/image-resize.ts`
 - Create: `src/background/translation-cache.ts`
 - Modify: `src/content/image-bitmap.ts`
@@ -1388,7 +1483,13 @@ import { calculateBoundedImageSize } from "../src/background/image-resize.js";
 
 describe("image resize", () => {
   it("keeps images within the max dimension while preserving aspect ratio", () => {
-    expect(calculateBoundedImageSize({ width: 4000, height: 2000, maxDimension: 1800 })).toEqual({
+    expect(
+      calculateBoundedImageSize({
+        width: 4000,
+        height: 2000,
+        maxDimension: 1800
+      })
+    ).toEqual({
       width: 1800,
       height: 900
     });
@@ -1511,6 +1612,7 @@ Expected: PASS.
 ## Task 10: Documentation And Full Verification
 
 **Files:**
+
 - Modify: `README.md`
 
 - [ ] **Step 1: Update README**

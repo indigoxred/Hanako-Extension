@@ -1,3 +1,5 @@
+import { calculateBoundedImageSize } from "./image-resize.js";
+
 import type { ImageBytesPayload } from "./image-bytes.js";
 
 export interface VisibleElementRect {
@@ -146,9 +148,14 @@ export function calculateVisibleCrop(input: {
     return undefined;
   }
 
+  const output = calculateBoundedImageSize({
+    height: sourceHeight,
+    width: sourceWidth
+  });
+
   return {
-    outputHeight: sourceHeight,
-    outputWidth: sourceWidth,
+    outputHeight: output.height,
+    outputWidth: output.width,
     sourceHeight,
     sourceWidth,
     sourceX,

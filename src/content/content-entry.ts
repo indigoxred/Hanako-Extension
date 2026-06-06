@@ -5,6 +5,7 @@ import {
 } from "./image-bitmap.js";
 import { detectImageElements } from "./image-detector.js";
 import {
+  clearDetectedImageReplacements,
   observeReplacementMutations,
   replaceDetectedImages
 } from "./dom-replacer.js";
@@ -18,6 +19,15 @@ chrome.runtime.onMessage.addListener(
       const result = replaceDetectedImages(message.replacements);
       replacementObserver ??= observeReplacementMutations();
       showOverlay(`Replaced ${result.replaced} translated images`);
+      sendResponse({ ok: true, ...result });
+      return true;
+    }
+
+    if (isClearTranslationsMessage(message)) {
+      replacementObserver?.disconnect();
+      replacementObserver = undefined;
+      const result = clearDetectedImageReplacements();
+      showOverlay(`Restored ${result.restored} images`);
       sendResponse({ ok: true, ...result });
       return true;
     }
@@ -154,5 +164,16 @@ function isReplaceImagesMessage(message: unknown): message is {
     message.type === "HANAKO_REPLACE_IMAGES" &&
     "replacements" in message &&
     Array.isArray(message.replacements)
+  );
+}
+
+function isClearTranslationsMessage(
+  message: unknown
+): message is { type: "HANAKO_CLEAR_TRANSLATIONS" } {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    "type" in message &&
+    message.type === "HANAKO_CLEAR_TRANSLATIONS"
   );
 }
