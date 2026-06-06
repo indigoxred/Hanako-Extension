@@ -15,6 +15,11 @@ pnpm test
 The build output is written to `dist/`. Load that directory through Chromium's
 unpacked extension flow.
 
+Because the extension fetches clicked image bytes in its service worker and can
+submit jobs to any user-configured Hanako server, the manifest declares host
+access for all URLs. After rebuilding a local unpacked install, reload the
+extension in `chrome://extensions` before testing.
+
 ## Release Packages
 
 Every push to `main` runs the merged `CI and Release` workflow. After build,
@@ -36,7 +41,8 @@ Image forwarding prefers browser-side bytes:
 
 - When the extension can fetch the image, it sends `bytesBase64` and `mediaType` to
   Hanako.
-- If browser-side fetch is blocked, Hanako falls back to the absolute image URL.
+- If browser-side fetch fails, the extension stops before creating a job instead
+  of sending a link-only request.
 - Detected images use resolved `currentSrc` values and stable `data-hanako-dom-id`
   markers so replacement can survive relative URLs and reader DOM updates.
 

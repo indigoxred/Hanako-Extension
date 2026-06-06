@@ -4,8 +4,7 @@ const manifest = {
   version: "0.1.0",
   permissions: ["storage", "contextMenus", "activeTab", "scripting"],
   optional_permissions: ["notifications"],
-  optional_host_permissions: ["<all_urls>"],
-  host_permissions: ["http://localhost:8787/*", "http://127.0.0.1:8787/*"],
+  host_permissions: ["<all_urls>"],
   background: {
     service_worker: "background/service-worker.js",
     type: "module"
