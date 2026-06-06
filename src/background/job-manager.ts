@@ -5,6 +5,7 @@ import {
 } from "./action-status.js";
 import {
   type ContextMenuImageContext,
+  type ContextMenuTranslationPhase,
   type ContextMenuTranslationResult,
   translateContextMenuImage as defaultTranslateContextMenuImage
 } from "./context-menu-flow.js";
@@ -34,7 +35,9 @@ export interface JobManagerDependencies {
   queueContextMenuImage?: (input: {
     context: ContextMenuImageContext;
   }) => Promise<QueueImageResult>;
-  sendQueuedImages?: () => Promise<SendQueueResult>;
+  sendQueuedImages?: (input?: {
+    context?: ContextMenuImageContext;
+  }) => Promise<SendQueueResult>;
   setActionStatus?: (status: ActionStatus) => Promise<void>;
   setTabJobState?: (
     tabId: number,
@@ -119,15 +122,22 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
 
       return result;
     },
-    sendQueuedImages: () =>
+    sendQueuedImages: (context?: ContextMenuImageContext) =>
       dedupe("send-queue", async () => {
         await setActionStatus("running");
+        await setContextTabJobState(context, {
+          message: "Finalizing queue",
+          phase: "finalizing-queue",
+          status: "running"
+        });
         let result: SendQueueResult;
 
         try {
-          result = await (
-            dependencies.sendQueuedImages ?? defaultSendQueuedImages
-          )();
+          result = dependencies.sendQueuedImages
+            ? await dependencies.sendQueuedImages({
+                ...(context ? { context } : {})
+              })
+            : await defaultSendQueuedImages();
         } catch (error) {
           result = {
             error: errorMessage(error, "Queue send failed"),
@@ -136,9 +146,25 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
         }
 
         if (result.ok) {
-          await Promise.all([updateQueueBadge(0), updateQueueMenuTitle(0)]);
+          await Promise.all([
+            updateQueueBadge(0),
+            updateQueueMenuTitle(0),
+            setContextTabJobState(context, {
+              jobId: result.jobId,
+              message: `Submitted ${result.imageCount} queued page${
+                result.imageCount === 1 ? "" : "s"
+              } to Hanako`,
+              phase: "submitted",
+              status: "submitted"
+            })
+          ]);
           await setActionStatus("success");
         } else {
+          await setContextTabJobState(context, {
+            message: result.error,
+            phase: "failed",
+            status: "failed"
+          });
           await setActionStatus("error");
         }
 
@@ -163,12 +189,21 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
           await setActionStatus("running");
           await setContextTabJobState(context, {
             message: "Translating clicked image",
+            phase: "starting",
             status: "running"
           });
           const result = await (
             dependencies.translateContextMenuImage ??
             defaultTranslateContextMenuImage
-          )({ context }).catch((error: unknown) => ({
+          )({
+            context,
+            onPhase: async (phase) => {
+              await setContextTabJobState(
+                context,
+                jobStateFromContextPhase(phase)
+              );
+            }
+          }).catch((error: unknown) => ({
             error: errorMessage(error, "Translation failed"),
             ok: false as const
           }));
@@ -183,10 +218,10 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
   };
 
   function setContextTabJobState(
-    context: ContextMenuImageContext,
+    context: ContextMenuImageContext | undefined,
     state: Omit<StoredJobState, "updatedAt">
   ): Promise<StoredJobState | undefined> {
-    if (context.tabId === undefined) {
+    if (!context || context.tabId === undefined) {
       return Promise.resolve(undefined);
     }
 
@@ -211,6 +246,7 @@ function contextJobStateFromResult(
     return {
       ...(result.jobId ? { jobId: result.jobId } : {}),
       message: result.error,
+      phase: "failed",
       status: "failed"
     };
   }
@@ -219,6 +255,7 @@ function contextJobStateFromResult(
     return {
       jobId: result.jobId,
       message: "Hanako job is still processing",
+      phase: "timeout",
       status: "timeout"
     };
   }
@@ -228,6 +265,25 @@ function contextJobStateFromResult(
     message: `Replaced ${result.replacementCount} image${
       result.replacementCount === 1 ? "" : "s"
     }`,
+    phase: "completed",
     status: "completed"
+  };
+}
+
+function jobStateFromContextPhase(
+  phase: ContextMenuTranslationPhase
+): Omit<StoredJobState, "updatedAt"> {
+  return {
+    ...(phase.jobId ? { jobId: phase.jobId } : {}),
+    message: phase.message,
+    phase: phase.phase,
+    status:
+      phase.phase === "completed"
+        ? "completed"
+        : phase.phase === "failed"
+          ? "failed"
+          : phase.phase === "timeout"
+            ? "timeout"
+            : "running"
   };
 }

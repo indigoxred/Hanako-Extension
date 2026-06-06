@@ -13,13 +13,13 @@ export function createContextMenu(
   chromeApi.contextMenus.create({
     contexts: ["image"],
     id: QUEUE_IMAGE_MENU_ID,
-    title: "Queue to Hanako"
+    title: "Add to Queue"
   });
   chromeApi.contextMenus.create({
     contexts: ["image"],
     enabled: false,
     id: SEND_QUEUE_MENU_ID,
-    title: "Send queue"
+    title: "Finalize Queue"
   });
 }
 
@@ -34,7 +34,7 @@ export async function updateQueueMenuTitle(
   chromeApi: Pick<typeof chrome, "contextMenus">,
   count: number
 ): Promise<void> {
-  const title = count > 0 ? `Queue to Hanako (${count})` : "Queue to Hanako";
+  const title = count > 0 ? `Add to Queue (${count})` : "Add to Queue";
   await Promise.all([
     chromeApi.contextMenus.update(QUEUE_IMAGE_MENU_ID, { title }),
     chromeApi.contextMenus.update(SEND_QUEUE_MENU_ID, { enabled: count > 0 })

@@ -50,9 +50,9 @@ jobs, poll until completion, and replace rendered images in-place.
 
 - `Translate with Hanako` translates the right-clicked image and replaces that
   image in the page after Hanako finishes rendering.
-- `Queue to Hanako` stores the right-clicked image in the extension queue and
+- `Add to Queue` stores the right-clicked image in the extension queue and
   increments the extension badge/menu counter.
-- `Send queue` sends queued images to Hanako as one normal
+- `Finalize Queue` sends queued images to Hanako as one normal
   multi-page job in queue order. Queue jobs do not replace browser images; use
   Hanako's WebUI/current job view to review and download the output.
 

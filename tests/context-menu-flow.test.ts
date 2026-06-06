@@ -136,6 +136,57 @@ describe("context menu translation flow", () => {
     ]);
   });
 
+  it("emits active phases while translating and replacing a clicked image", async () => {
+    const phases: unknown[] = [];
+
+    await translateContextMenuImage({
+      context: {
+        srcUrl: "https://manga.example/page-1.png",
+        tabId: 12
+      },
+      captureImageBytes: async () => ({
+        bytesBase64: "cGFnZSAx",
+        mediaType: "image/png"
+      }),
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      onPhase: async (phase) => {
+        phases.push(phase);
+      },
+      replaceImage: async () => ({ ok: true, replaced: 1 }),
+      translateImage: async () => ({ job: { id: "job_1" } }),
+      waitForJobCompletion: async () => ({
+        detail: {
+          job: { id: "job_1", status: "completed" },
+          pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+        },
+        status: "completed"
+      })
+    });
+
+    expect(phases).toEqual([
+      { message: "Capturing clicked image", phase: "capturing-image" },
+      { message: "Submitting image to Hanako", phase: "submitting-job" },
+      {
+        jobId: "job_1",
+        message: "Waiting for Hanako job",
+        phase: "waiting-for-job"
+      },
+      {
+        jobId: "job_1",
+        message: "Replacing rendered image",
+        phase: "replacing-image"
+      },
+      {
+        jobId: "job_1",
+        message: "Translation completed",
+        phase: "completed"
+      }
+    ]);
+  });
+
   it("fails before contacting Hanako when the clicked image bytes cannot be extracted", async () => {
     const result = await translateContextMenuImage({
       context: {

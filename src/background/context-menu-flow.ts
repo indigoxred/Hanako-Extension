@@ -39,6 +39,19 @@ export type ContextMenuTranslationResult =
     }
   | { ok: false; error: string; jobId?: string; status?: "failed" };
 
+export interface ContextMenuTranslationPhase {
+  jobId?: string;
+  message: string;
+  phase:
+    | "capturing-image"
+    | "submitting-job"
+    | "waiting-for-job"
+    | "replacing-image"
+    | "completed"
+    | "failed"
+    | "timeout";
+}
+
 export interface ReplaceContextImageInput {
   domIndex?: number;
   domId?: string;
@@ -65,6 +78,7 @@ export interface TranslateContextMenuImageDependencies {
   context: ContextMenuImageContext;
   fetchImageBytes?: FetchImageBytes;
   loadSettings?: () => Promise<ExtensionSettings>;
+  onPhase?: (phase: ContextMenuTranslationPhase) => Promise<void> | void;
   openTab?: (url: string) => Promise<void>;
   replaceImage?: (
     tabId: number,
@@ -81,6 +95,7 @@ export async function translateContextMenuImage({
   context,
   fetchImageBytes,
   loadSettings = loadExtensionSettings,
+  onPhase,
   replaceImage = defaultReplaceImage,
   translateImage = defaultTranslateImage,
   waitForJobCompletion = defaultWaitForJobCompletion
@@ -95,6 +110,10 @@ export async function translateContextMenuImage({
 
   const settings = await loadSettings();
   let image: ExtensionImageCandidate;
+  await emitPhase(onPhase, {
+    message: "Capturing clicked image",
+    phase: "capturing-image"
+  });
   const captured = await captureImageBytes({
     ...(context.pageUrl ? { pageUrl: context.pageUrl } : {}),
     sourceUrl: context.srcUrl,
@@ -114,6 +133,13 @@ export async function translateContextMenuImage({
       fetchImageBytes
     );
   } catch (error) {
+    await emitPhase(onPhase, {
+      message:
+        error instanceof Error
+          ? error.message
+          : "The extension could not extract bytes for this image",
+      phase: "failed"
+    });
     return {
       error:
         error instanceof Error
@@ -123,10 +149,19 @@ export async function translateContextMenuImage({
     };
   }
 
+  await emitPhase(onPhase, {
+    message: "Submitting image to Hanako",
+    phase: "submitting-job"
+  });
   const detail = await translateImage({
     baseUrl: settings.hanakoBaseUrl,
     image,
     targetLanguage: settings.targetLanguage
+  });
+  await emitPhase(onPhase, {
+    jobId: detail.job.id,
+    message: "Waiting for Hanako job",
+    phase: "waiting-for-job"
   });
   const completed = await waitForJobCompletion({
     baseUrl: settings.hanakoBaseUrl,
@@ -134,6 +169,11 @@ export async function translateContextMenuImage({
   });
 
   if (completed.status === "failed") {
+    await emitPhase(onPhase, {
+      jobId: detail.job.id,
+      message: completed.detail.error?.message ?? "Hanako job failed",
+      phase: "failed"
+    });
     return {
       error: completed.detail.error?.message ?? "Hanako job failed",
       jobId: detail.job.id,
@@ -143,6 +183,11 @@ export async function translateContextMenuImage({
   }
 
   if (completed.status === "timeout") {
+    await emitPhase(onPhase, {
+      jobId: detail.job.id,
+      message: "Hanako job is still processing",
+      phase: "timeout"
+    });
     return {
       jobId: detail.job.id,
       ok: true,
@@ -154,6 +199,11 @@ export async function translateContextMenuImage({
   const page = completed.detail.pages?.[0];
 
   if (!page?.renderedAssetId) {
+    await emitPhase(onPhase, {
+      jobId: detail.job.id,
+      message: "Hanako job completed without a rendered page",
+      phase: "failed"
+    });
     return {
       error: "Hanako job completed without a rendered page",
       jobId: detail.job.id,
@@ -161,6 +211,11 @@ export async function translateContextMenuImage({
     };
   }
 
+  await emitPhase(onPhase, {
+    jobId: detail.job.id,
+    message: "Replacing rendered image",
+    phase: "replacing-image"
+  });
   const replaced = await replaceImage(context.tabId, {
     renderedUrl: createRenderedPageUrl({
       baseUrl: settings.hanakoBaseUrl,
@@ -172,12 +227,24 @@ export async function translateContextMenuImage({
     sourceUrl: context.srcUrl
   });
 
+  await emitPhase(onPhase, {
+    jobId: detail.job.id,
+    message: "Translation completed",
+    phase: "completed"
+  });
   return {
     jobId: detail.job.id,
     ok: true,
     replacementCount: replaced.replaced,
     status: "completed"
   };
+}
+
+async function emitPhase(
+  onPhase: TranslateContextMenuImageDependencies["onPhase"],
+  phase: ContextMenuTranslationPhase
+): Promise<void> {
+  await onPhase?.(phase);
 }
 
 export async function captureContextImageBytes(

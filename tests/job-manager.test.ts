@@ -109,6 +109,7 @@ describe("job manager", () => {
       {
         state: {
           message: "Translating clicked image",
+          phase: "starting",
           status: "running"
         },
         tabId: 7
@@ -117,7 +118,54 @@ describe("job manager", () => {
         state: {
           jobId: "job_1",
           message: "Replaced 1 image",
+          phase: "completed",
           status: "completed"
+        },
+        tabId: 7
+      }
+    ]);
+  });
+
+  it("stores queue finalization phase status for the source tab", async () => {
+    const states: unknown[] = [];
+    const manager = createJobManager({
+      sendQueuedImages: async () => ({
+        imageCount: 2,
+        jobId: "job_queue",
+        ok: true,
+        status: "submitted"
+      }),
+      setActionStatus: async () => undefined,
+      setTabJobState: async (tabId, state) => {
+        states.push({ state, tabId });
+        return { ...state, updatedAt: "now" };
+      },
+      updateQueueBadge: async () => undefined,
+      updateQueueMenuTitle: async () => undefined
+    });
+
+    await expect(
+      manager.sendQueuedImages({
+        srcUrl: "https://manga.example/page.png",
+        tabId: 7
+      })
+    ).resolves.toMatchObject({ jobId: "job_queue", ok: true });
+
+    expect(states).toEqual([
+      {
+        state: {
+          message: "Finalizing queue",
+          phase: "finalizing-queue",
+          status: "running"
+        },
+        tabId: 7
+      },
+      {
+        state: {
+          jobId: "job_queue",
+          message: "Submitted 2 queued pages to Hanako",
+          phase: "submitted",
+          status: "submitted"
         },
         tabId: 7
       }

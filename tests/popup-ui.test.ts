@@ -10,4 +10,11 @@ describe("popup UI", () => {
     expect(source).not.toContain("Detect manga images");
     expect(source).not.toContain("Translate page");
   });
+
+  it("shows the active job phase from stored job state", async () => {
+    const source = await readFile(resolve("src/popup/Popup.tsx"), "utf8");
+
+    expect(source).toContain("Current phase:");
+    expect(source).toContain("setInterval");
+  });
 });

@@ -10,6 +10,7 @@ export type StoredJobStatus =
 export interface StoredJobState {
   jobId?: string;
   message: string;
+  phase?: string;
   status: StoredJobStatus;
   updatedAt: string;
 }

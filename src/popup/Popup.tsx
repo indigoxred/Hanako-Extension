@@ -29,6 +29,7 @@ interface TabJobStateResult {
   state?: {
     jobId?: string;
     message: string;
+    phase?: string;
     status: string;
     updatedAt: string;
   };
@@ -47,12 +48,23 @@ function PopupApp() {
     DEFAULT_EXTENSION_SETTINGS
   );
   const [jobUrl, setJobUrl] = useState("");
+  const [jobPhase, setJobPhase] = useState("");
   const [queueCount, setQueueCount] = useState(0);
   const [status, setStatus] = useState("Checking");
 
   useEffect(() => {
-    void loadExtensionSettings()
-      .then(async (loaded) => {
+    let currentSettings = DEFAULT_EXTENSION_SETTINGS;
+    let disposed = false;
+
+    async function loadAndRefresh() {
+      try {
+        const loaded = await loadExtensionSettings();
+        currentSettings = loaded;
+
+        if (disposed) {
+          return;
+        }
+
         setSettings(loaded);
         const [ok, hasJobStatus] = await Promise.all([
           checkHanakoConnection({
@@ -60,12 +72,28 @@ function PopupApp() {
           }),
           refreshJobStatus(loaded)
         ]);
-        if (!hasJobStatus) {
+
+        if (!disposed && !hasJobStatus) {
           setStatus(ok ? "Ready" : "Unavailable");
         }
-      })
-      .catch(() => setStatus("Unavailable"));
+      } catch {
+        if (!disposed) {
+          setStatus("Unavailable");
+        }
+      }
+    }
+
+    void loadAndRefresh();
     void refreshQueueCount();
+    const refreshInterval = window.setInterval(() => {
+      void refreshQueueCount();
+      void refreshJobStatus(currentSettings);
+    }, 1500);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(refreshInterval);
+    };
   }, []);
 
   function refreshQueueCount() {
@@ -90,6 +118,7 @@ function PopupApp() {
         }
 
         setStatus(result.state.message);
+        setJobPhase(result.state.phase ?? "");
 
         if (result.state.jobId) {
           setJobUrl(
@@ -119,6 +148,7 @@ function PopupApp() {
             })
           );
           setStatus(`Queued ${result.imageCount ?? 0} pages in Hanako`);
+          setJobPhase("submitted");
           return;
         }
 
@@ -158,13 +188,14 @@ function PopupApp() {
     <main>
       <h1>Hanako</h1>
       <p>{status}</p>
+      {jobPhase ? <p>Current phase: {jobPhase}</p> : null}
       <p>Queued pages: {queueCount}</p>
       <button
         disabled={queueCount <= 0}
         type="button"
         onClick={() => sendQueue()}
       >
-        Send queue
+        Finalize Queue
       </button>
       <button
         disabled={queueCount <= 0}

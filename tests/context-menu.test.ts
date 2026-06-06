@@ -29,13 +29,13 @@ describe("context menus", () => {
       {
         contexts: ["image"],
         id: QUEUE_IMAGE_MENU_ID,
-        title: "Queue to Hanako"
+        title: "Add to Queue"
       },
       {
         contexts: ["image"],
         enabled: false,
         id: SEND_QUEUE_MENU_ID,
-        title: "Send queue"
+        title: "Finalize Queue"
       }
     ]);
   });
@@ -54,7 +54,7 @@ describe("context menus", () => {
     );
 
     expect(updates).toEqual([
-      [QUEUE_IMAGE_MENU_ID, { title: "Queue to Hanako (2)" }],
+      [QUEUE_IMAGE_MENU_ID, { title: "Add to Queue (2)" }],
       [SEND_QUEUE_MENU_ID, { enabled: true }]
     ]);
   });

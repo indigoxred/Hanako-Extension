@@ -39,7 +39,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 
   if (info.menuItemId === SEND_QUEUE_MENU_ID) {
-    void jobManager.sendQueuedImages().catch(() => undefined);
+    void jobManager.sendQueuedImages(context).catch(() => undefined);
   }
 });
 
