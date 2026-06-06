@@ -25,7 +25,13 @@ export type QueueImageResult =
   | { ok: false; error: string };
 
 export type SendQueueResult =
-  | { ok: true; imageCount: number; jobId: string; status: "submitted" }
+  | {
+      ok: true;
+      imageCount: number;
+      jobId: string;
+      jobUrl: string;
+      status: "submitted";
+    }
   | { ok: false; error: string };
 
 export interface QueueContextMenuImageInput {
@@ -109,7 +115,7 @@ export async function sendQueuedImages({
       url: item.sourceUrl ?? item.id,
       ...(item.width === undefined ? {} : { width: item.width })
     })),
-    mode: "review",
+    mode: "auto",
     targetLanguage: settings.targetLanguage
   });
 
@@ -118,7 +124,17 @@ export async function sendQueuedImages({
   return {
     imageCount: queued.length,
     jobId: detail.job.id,
+    jobUrl: createOpenJobUrl({
+      baseUrl: settings.hanakoBaseUrl,
+      jobId: detail.job.id
+    }),
     ok: true,
     status: "submitted"
   };
+}
+
+function createOpenJobUrl(input: { baseUrl: string; jobId: string }): string {
+  return `${input.baseUrl.replace(/\/+$/, "")}/jobs/${encodeURIComponent(
+    input.jobId
+  )}`;
 }

@@ -39,6 +39,7 @@ interface SendQueueResult {
   error?: string;
   imageCount?: number;
   jobId?: string;
+  jobUrl?: string;
   ok?: boolean;
   status?: "submitted";
 }
@@ -142,10 +143,11 @@ function PopupApp() {
         if (result.ok && result.jobId) {
           setQueueCount(0);
           setJobUrl(
-            createOpenJobUrl({
-              hanakoBaseUrl: settings.hanakoBaseUrl,
-              jobId: result.jobId
-            })
+            result.jobUrl ??
+              createOpenJobUrl({
+                hanakoBaseUrl: settings.hanakoBaseUrl,
+                jobId: result.jobId
+              })
           );
           setStatus(`Queued ${result.imageCount ?? 0} pages in Hanako`);
           setJobPhase("submitted");

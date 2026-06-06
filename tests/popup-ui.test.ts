@@ -17,4 +17,10 @@ describe("popup UI", () => {
     expect(source).toContain("Current phase:");
     expect(source).toContain("setInterval");
   });
+
+  it("sets a wider popup width to reduce unnecessary wrapping", async () => {
+    const source = await readFile(resolve("src/popup/popup.html"), "utf8");
+
+    expect(source).toContain("min-width: 420px");
+  });
 });

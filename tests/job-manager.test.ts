@@ -58,13 +58,18 @@ describe("job manager", () => {
   it("clears queue indicators after sending a queue", async () => {
     const badgeCounts: number[] = [];
     const menuCounts: number[] = [];
+    const openedUrls: string[] = [];
     const manager = createJobManager({
       sendQueuedImages: async () => ({
         imageCount: 2,
         jobId: "job_queue",
+        jobUrl: "http://localhost:8787/jobs/job_queue",
         ok: true,
         status: "submitted"
       }),
+      openTab: async (url) => {
+        openedUrls.push(url);
+      },
       setActionStatus: async () => undefined,
       updateQueueBadge: async (count) => {
         badgeCounts.push(count);
@@ -80,6 +85,7 @@ describe("job manager", () => {
     });
     expect(badgeCounts).toEqual([0]);
     expect(menuCounts).toEqual([0]);
+    expect(openedUrls).toEqual(["http://localhost:8787/jobs/job_queue"]);
   });
 
   it("stores context menu job status for the source tab", async () => {
@@ -132,6 +138,7 @@ describe("job manager", () => {
       sendQueuedImages: async () => ({
         imageCount: 2,
         jobId: "job_queue",
+        jobUrl: "http://localhost:8787/jobs/job_queue",
         ok: true,
         status: "submitted"
       }),

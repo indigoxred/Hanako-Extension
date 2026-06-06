@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import react from "@vitejs/plugin-react";
@@ -13,8 +13,24 @@ function manifestPlugin(): Plugin {
       const outputPath = resolve("dist/manifest.json");
       await mkdir(dirname(outputPath), { recursive: true });
       await writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      await wrapContentScript(resolve("dist/content/content-entry.js"));
     }
   };
+}
+
+async function wrapContentScript(outputPath: string): Promise<void> {
+  const source = await readFile(outputPath, "utf8");
+  const wrapped = `(() => {
+  if (globalThis.__hanakoContentEntryInstalled) {
+    return;
+  }
+
+  globalThis.__hanakoContentEntryInstalled = true;
+${source}
+})();
+`;
+
+  await writeFile(outputPath, wrapped);
 }
 
 export default defineConfig({

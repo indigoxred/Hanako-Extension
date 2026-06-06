@@ -13,6 +13,8 @@ describe("content script build output", () => {
 
     const source = readFileSync(builtContentScript, "utf8");
 
+    expect(source.trimStart()).toMatch(/^\(\(\)\s*=>\s*\{/);
+    expect(source).toContain("__hanakoContentEntryInstalled");
     expect(source).not.toMatch(/^\s*import\b/m);
     expect(source).not.toMatch(/^\s*export\b/m);
   });

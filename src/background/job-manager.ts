@@ -38,6 +38,7 @@ export interface JobManagerDependencies {
   sendQueuedImages?: (input?: {
     context?: ContextMenuImageContext;
   }) => Promise<SendQueueResult>;
+  openTab?: (url: string) => Promise<void>;
   setActionStatus?: (status: ActionStatus) => Promise<void>;
   setTabJobState?: (
     tabId: number,
@@ -66,6 +67,9 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
     dependencies.setTabJobState ??
     ((tabId: number, state: Omit<StoredJobState, "updatedAt">) =>
       setBrowserTabJobState(chrome.storage.local, tabId, state));
+  const openTab =
+    dependencies.openTab ??
+    ((url: string) => chrome.tabs.create({ url }).then(() => undefined));
 
   async function dedupe<T>(key: string, run: () => Promise<T>): Promise<T> {
     const existing = inFlight.get(key) as Promise<T> | undefined;
@@ -156,7 +160,8 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
               } to Hanako`,
               phase: "submitted",
               status: "submitted"
-            })
+            }),
+            openJobTab(result.jobUrl)
           ]);
           await setActionStatus("success");
         } else {
@@ -231,6 +236,14 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
       );
     } catch {
       return Promise.resolve(undefined);
+    }
+  }
+
+  function openJobTab(url: string): Promise<void> {
+    try {
+      return Promise.resolve(openTab(url)).catch(() => undefined);
+    } catch {
+      return Promise.resolve();
     }
   }
 }

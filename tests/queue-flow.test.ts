@@ -70,7 +70,7 @@ describe("queue flow", () => {
       translatePage: async (input) => {
         expect(input).toMatchObject({
           baseUrl: "http://localhost:8787",
-          mode: "review",
+          mode: "auto",
           targetLanguage: "en"
         });
         expect(input.images.map((image) => image.bytesBase64)).toEqual([
@@ -84,6 +84,7 @@ describe("queue flow", () => {
     expect(result).toEqual({
       imageCount: 2,
       jobId: "job_queue",
+      jobUrl: "http://localhost:8787/jobs/job_queue",
       ok: true,
       status: "submitted"
     });
