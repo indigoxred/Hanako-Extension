@@ -1,5 +1,6 @@
 import {
   createRenderedPageUrl,
+  describeJobPhase,
   pollJobOnce as defaultPollJobOnce,
   type ExtensionJobPollDetail,
   type PollJobInput
@@ -237,6 +238,7 @@ async function pollActiveExtensionJob(input: {
   }
 
   if (detail.job.status !== "completed") {
+    const phase = describeJobPhase(detail);
     await updateActiveJob(input.storage, {
       ...job,
       pollAttempts: job.pollAttempts + 1,
@@ -244,8 +246,8 @@ async function pollActiveExtensionJob(input: {
     });
     await input.setTabJobState(job.tabId, {
       jobId: job.jobId,
-      message: "Waiting for Hanako job",
-      phase: "waiting-for-job",
+      message: phase.message,
+      phase: phase.phase,
       status: "running"
     });
     return;
@@ -271,6 +273,7 @@ async function pollActiveExtensionJob(input: {
   }
 
   if (!hasExpectedRenderedPages(job, detail)) {
+    const phase = describeJobPhase(detail);
     await updateActiveJob(input.storage, {
       ...job,
       pollAttempts: job.pollAttempts + 1,
@@ -279,7 +282,7 @@ async function pollActiveExtensionJob(input: {
     await input.setTabJobState(job.tabId, {
       jobId: job.jobId,
       message: "Waiting for Hanako rendered pages",
-      phase: "waiting-for-job",
+      phase: phase.phase === "completed" ? "render_pages" : phase.phase,
       status: "running"
     });
     return;

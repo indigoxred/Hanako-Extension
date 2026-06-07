@@ -22,6 +22,7 @@ import {
 } from "./visible-tab-capture.js";
 import {
   createRenderedPageUrl,
+  describeJobPhase,
   waitForJobCompletion as defaultWaitForJobCompletion,
   type WaitForJobCompletionInput,
   type WaitForJobCompletionResult
@@ -57,7 +58,8 @@ export interface ContextMenuTranslationPhase {
     | "replacing-image"
     | "completed"
     | "failed"
-    | "timeout";
+    | "timeout"
+    | (string & {});
 }
 
 export interface ReplaceContextImageInput {
@@ -187,10 +189,14 @@ export async function translateContextMenuImage({
     image: uploadImage,
     targetLanguage: settings.targetLanguage
   });
+  const initialJobPhase = describeJobPhase({
+    job: detail.job,
+    ...(detail.progress ? { progress: detail.progress } : {})
+  });
   await emitPhase(onPhase, {
     jobId: detail.job.id,
-    message: "Waiting for Hanako job",
-    phase: "waiting-for-job"
+    message: initialJobPhase.message,
+    phase: initialJobPhase.phase
   });
   await trackActiveJob({
     baseUrl: settings.hanakoBaseUrl,
@@ -208,6 +214,13 @@ export async function translateContextMenuImage({
   const completed = await waitForJobCompletion({
     baseUrl: settings.hanakoBaseUrl,
     jobId: detail.job.id,
+    onProgress: async (phase) => {
+      await emitPhase(onPhase, {
+        jobId: detail.job.id,
+        message: phase.message,
+        phase: phase.phase
+      });
+    },
     requiredRenderedPages: 1
   });
 

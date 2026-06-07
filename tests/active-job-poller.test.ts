@@ -113,6 +113,49 @@ describe("active extension job poller", () => {
     ).resolves.toEqual({ polled: 0 });
   });
 
+  it("stores the latest Hanako progress phase while the job is still running", async () => {
+    const storage = createStorage();
+    const states: unknown[] = [];
+
+    await trackActiveExtensionJob(storage, {
+      baseUrl: "http://hanako.test",
+      imageCount: 1,
+      jobId: "job_1",
+      replacements: [{ domIndex: 0 }],
+      tabId: 7
+    });
+
+    await pollActiveExtensionJobsOnce({
+      pollJobOnce: async () => ({
+        job: { id: "job_1", status: "running" },
+        progress: [
+          {
+            createdAt: "2026-06-07T00:00:01.000Z",
+            label: "Detect/OCR",
+            message: "Detecting text regions and running OCR",
+            status: "started",
+            step: "detect_ocr"
+          }
+        ]
+      }),
+      setTabJobState: async (tabId, state) => {
+        states.push({ state, tabId });
+        return { ...state, updatedAt: "now" };
+      },
+      storage
+    });
+
+    expect(states.at(-1)).toEqual({
+      state: {
+        jobId: "job_1",
+        message: "Detecting text regions and running OCR",
+        phase: "detect_ocr",
+        status: "running"
+      },
+      tabId: 7
+    });
+  });
+
   it("keeps polling completed active jobs until rendered page metadata appears", async () => {
     const storage = createStorage();
     const replacements: unknown[] = [];
@@ -161,7 +204,7 @@ describe("active extension job poller", () => {
       state: {
         jobId: "job_1",
         message: "Waiting for Hanako rendered pages",
-        phase: "waiting-for-job",
+        phase: "render_pages",
         status: "running"
       },
       tabId: 7

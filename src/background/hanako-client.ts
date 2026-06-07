@@ -24,6 +24,13 @@ export interface ExtensionJobDetail {
     source?: string;
   };
   pages?: unknown[];
+  progress?: Array<{
+    createdAt?: string;
+    label?: string;
+    message?: string;
+    status?: string;
+    step?: string;
+  }>;
 }
 
 export interface TranslateImageInput extends ExtensionHanakoClientOptions {

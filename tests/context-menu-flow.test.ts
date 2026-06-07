@@ -173,11 +173,11 @@ describe("context menu translation flow", () => {
     });
 
     expect(waitInputs).toEqual([
-      {
+      expect.objectContaining({
         baseUrl: "http://localhost:8787",
         jobId: "job_1",
         requiredRenderedPages: 1
-      }
+      })
     ]);
   });
 
@@ -202,13 +202,33 @@ describe("context menu translation flow", () => {
       },
       replaceImage: async () => ({ ok: true, replaced: 1 }),
       translateImage: async () => ({ job: { id: "job_1" } }),
-      waitForJobCompletion: async () => ({
-        detail: {
-          job: { id: "job_1", status: "completed" },
-          pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
-        },
-        status: "completed"
-      })
+      waitForJobCompletion: async (input) => {
+        await input.onProgress?.(
+          {
+            message: "Detecting text regions and running OCR",
+            phase: "detect_ocr"
+          },
+          {
+            job: { id: "job_1", status: "running" },
+            progress: [
+              {
+                createdAt: "2026-06-07T00:00:01.000Z",
+                label: "Detect/OCR",
+                message: "Detecting text regions and running OCR",
+                status: "started",
+                step: "detect_ocr"
+              }
+            ]
+          }
+        );
+        return {
+          detail: {
+            job: { id: "job_1", status: "completed" },
+            pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+          },
+          status: "completed"
+        };
+      }
     });
 
     expect(phases).toEqual([
@@ -216,8 +236,13 @@ describe("context menu translation flow", () => {
       { message: "Submitting image to Hanako", phase: "submitting-job" },
       {
         jobId: "job_1",
-        message: "Waiting for Hanako job",
-        phase: "waiting-for-job"
+        message: "Hanako job is running",
+        phase: "running"
+      },
+      {
+        jobId: "job_1",
+        message: "Detecting text regions and running OCR",
+        phase: "detect_ocr"
       },
       {
         jobId: "job_1",
