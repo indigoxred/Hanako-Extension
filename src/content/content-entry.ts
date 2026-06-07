@@ -1,7 +1,8 @@
 import {
   captureImageBitmapFromElement,
   captureImageBytesBySource,
-  locateImageElementBySource
+  locateImageElementBySource,
+  scrollImageElementIntoViewBySource
 } from "./image-bitmap.js";
 import { detectImageElements } from "./image-detector.js";
 import {
@@ -64,6 +65,19 @@ chrome.runtime.onMessage.addListener(
           ? { ok: true, rect }
           : {
               error: "The clicked image could not be located on the page",
+              ok: false
+            }
+      );
+      return true;
+    }
+
+    if (isScrollImageElementIntoViewMessage(message)) {
+      const rect = scrollImageElementIntoViewBySource(message.sourceUrl);
+      sendResponse(
+        rect
+          ? { ok: true, rect }
+          : {
+              error: "The clicked image could not be scrolled into view",
               ok: false
             }
       );
@@ -143,6 +157,20 @@ function isLocateImageElementMessage(message: unknown): message is {
     message !== null &&
     "type" in message &&
     message.type === "HANAKO_LOCATE_IMAGE_ELEMENT" &&
+    "sourceUrl" in message &&
+    typeof message.sourceUrl === "string"
+  );
+}
+
+function isScrollImageElementIntoViewMessage(message: unknown): message is {
+  sourceUrl: string;
+  type: "HANAKO_SCROLL_IMAGE_INTO_VIEW";
+} {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    "type" in message &&
+    message.type === "HANAKO_SCROLL_IMAGE_INTO_VIEW" &&
     "sourceUrl" in message &&
     typeof message.sourceUrl === "string"
   );

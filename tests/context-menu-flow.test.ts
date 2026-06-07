@@ -379,6 +379,54 @@ describe("context menu translation flow", () => {
     });
   });
 
+  it("emits a warning when screenshot fallback can only capture the visible portion", async () => {
+    const phases: unknown[] = [];
+    const result = await translateContextMenuImage({
+      captureImageBytes: async () => undefined,
+      captureImageBytesInNewTab: async () => undefined,
+      captureVisibleImageBytes: async () => ({
+        bytesBase64: "dmlzaWJsZS1jcm9w",
+        mediaType: "image/png",
+        warning:
+          "Warning: screenshot fallback could only include the visible portion of the image."
+      }),
+      context: {
+        pageUrl: "https://www.pixiv.net/artworks/123",
+        srcUrl: "https://i.pximg.net/img-original/img/2026/06/07/page.jpg",
+        tabId: 12,
+        windowId: 9
+      },
+      fetchImageBytes: async () => undefined,
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      onPhase: async (phase) => {
+        phases.push(phase);
+      },
+      replaceImage: async () => ({ ok: true, replaced: 1 }),
+      translateImage: async () => ({ job: { id: "job_1" } }),
+      waitForJobCompletion: async () => ({
+        detail: {
+          job: { id: "job_1", status: "completed" },
+          pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+        },
+        status: "completed"
+      })
+    });
+
+    expect(phases).toContainEqual({
+      message:
+        "Warning: screenshot fallback could only include the visible portion of the image.",
+      phase: "capturing-image"
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      warning:
+        "Warning: screenshot fallback could only include the visible portion of the image."
+    });
+  });
+
   it("content capture helper only asks the page for image bytes", async () => {
     const sendMessage = vi.fn().mockResolvedValue({
       error: "The clicked image could not be captured from the page",
@@ -457,7 +505,57 @@ describe("context menu translation flow", () => {
     expect(remove).toHaveBeenCalledWith(99);
   });
 
-  it("locates the clicked image before using the visible screenshot fallback", async () => {
+  it("keeps the inactive image tab open and retries until image bytes are readable", async () => {
+    const waits: number[] = [];
+    const removeTab = vi.fn().mockResolvedValue(undefined);
+    const sendCaptureMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        error: "The clicked image could not be captured from the page",
+        ok: false
+      })
+      .mockResolvedValueOnce({
+        error: "The clicked image could not be captured from the page",
+        ok: false
+      })
+      .mockResolvedValueOnce({
+        image: {
+          bytesBase64: "ZGVsYXllZC1pbWFnZS10YWI=",
+          mediaType: "image/png",
+          name: "delayed-tab.png"
+        },
+        ok: true
+      });
+    const dependencies = {
+      createTab: async () => ({ id: 99, status: "complete" }),
+      executeContentScript: async () => undefined,
+      removeTab,
+      sendCaptureMessage,
+      waitForCaptureRetry: async (attempt: number) => {
+        waits.push(attempt);
+      }
+    };
+
+    await expect(
+      captureContextImageBytesInNewTab(
+        {
+          sourceUrl: "https://i.pximg.net/img-original/img/page.png",
+          tabId: 12
+        },
+        dependencies
+      )
+    ).resolves.toEqual({
+      bytesBase64: "ZGVsYXllZC1pbWFnZS10YWI=",
+      mediaType: "image/png",
+      name: "delayed-tab.png"
+    });
+
+    expect(sendCaptureMessage).toHaveBeenCalledTimes(3);
+    expect(waits).toEqual([1, 2]);
+    expect(removeTab).toHaveBeenCalledWith(99);
+  });
+
+  it("scrolls the clicked image before using the visible screenshot fallback", async () => {
     const executeScript = vi.fn().mockResolvedValue([]);
     const sendMessage = vi.fn().mockResolvedValue({
       ok: true,
@@ -522,7 +620,86 @@ describe("context menu translation flow", () => {
     });
     expect(sendMessage).toHaveBeenCalledWith(12, {
       sourceUrl: "https://manga.example/page.png",
-      type: "HANAKO_LOCATE_IMAGE_ELEMENT"
+      type: "HANAKO_SCROLL_IMAGE_INTO_VIEW"
+    });
+  });
+
+  it("scrolls the image into view before visible screenshot fallback and warns if it remains partial", async () => {
+    const executeScript = vi.fn().mockResolvedValue([]);
+    const sendMessage = vi.fn().mockImplementation(async (_tabId, message) => {
+      if (message.type !== "HANAKO_SCROLL_IMAGE_INTO_VIEW") {
+        throw new Error(`Unexpected message ${message.type}`);
+      }
+
+      return {
+        ok: true,
+        rect: {
+          domId: "hanako-context-img-3",
+          domIndex: 3,
+          fullyVisible: false,
+          height: 1200,
+          left: 0,
+          top: 0,
+          viewportHeight: 800,
+          viewportWidth: 1000,
+          warning:
+            "Warning: screenshot fallback could only include the visible portion of the image.",
+          width: 700
+        }
+      };
+    });
+    vi.stubGlobal("chrome", {
+      scripting: { executeScript },
+      tabs: { sendMessage }
+    });
+
+    await expect(
+      captureVisibleContextImageBytes(
+        {
+          sourceUrl: "https://manga.example/page.png",
+          tabId: 12,
+          windowId: 9
+        },
+        {
+          captureVisibleElementBitmap: async (input) => {
+            expect(input).toEqual({
+              rect: {
+                domId: "hanako-context-img-3",
+                domIndex: 3,
+                fullyVisible: false,
+                height: 1200,
+                left: 0,
+                top: 0,
+                viewportHeight: 800,
+                viewportWidth: 1000,
+                warning:
+                  "Warning: screenshot fallback could only include the visible portion of the image.",
+                width: 700
+              },
+              sourceUrl: "https://manga.example/page.png",
+              windowId: 9
+            });
+            return {
+              bytesBase64: "dmlzaWJsZS1wb3J0aW9u",
+              mediaType: "image/png",
+              name: "page.png"
+            };
+          }
+        }
+      )
+    ).resolves.toEqual({
+      bytesBase64: "dmlzaWJsZS1wb3J0aW9u",
+      domId: "hanako-context-img-3",
+      domIndex: 3,
+      mediaType: "image/png",
+      name: "page.png",
+      warning:
+        "Warning: screenshot fallback could only include the visible portion of the image."
+    });
+
+    expect(sendMessage).toHaveBeenCalledWith(12, {
+      sourceUrl: "https://manga.example/page.png",
+      type: "HANAKO_SCROLL_IMAGE_INTO_VIEW"
     });
   });
 });

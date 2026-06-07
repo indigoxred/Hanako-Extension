@@ -147,6 +147,39 @@ describe("queue flow", () => {
     expect(await getQueuedImageCount(storage)).toBe(1);
   });
 
+  it("returns a warning when queue screenshot fallback can only capture the visible portion", async () => {
+    const storage = createMemoryStorage();
+    const result = await queueContextMenuImage({
+      captureImageBytes: async () => undefined,
+      captureImageBytesInNewTab: async () => undefined,
+      captureVisibleImageBytes: async () => ({
+        bytesBase64: "visible-crop",
+        mediaType: "image/png",
+        warning:
+          "Warning: screenshot fallback could only include the visible portion of the image."
+      }),
+      context: {
+        pageUrl: "https://www.pixiv.net/artworks/123",
+        srcUrl: "https://i.pximg.net/img-original/img/2026/06/07/page.jpg",
+        tabId: 5,
+        windowId: 9
+      },
+      fetchImageBytes: async () => undefined,
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      storage
+    });
+
+    expect(result).toMatchObject({
+      count: 1,
+      ok: true,
+      warning:
+        "Warning: screenshot fallback could only include the visible portion of the image."
+    });
+  });
+
   it("sends queued images as one Hanako page project and clears queue on success", async () => {
     const storage = createMemoryStorage();
     await queueContextMenuImage({

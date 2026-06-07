@@ -4,28 +4,31 @@ export interface CapturedImageBytes {
   domId?: string;
   mediaType: string;
   name?: string;
+  warning?: string;
 }
 
 export interface LocatedImageElementRect {
   domIndex: number;
   domId: string;
+  fullyVisible?: boolean;
   height: number;
   left: number;
   top: number;
   viewportHeight: number;
   viewportWidth: number;
+  warning?: string;
   width: number;
 }
+
+export const PARTIAL_SCREENSHOT_WARNING =
+  "Warning: screenshot fallback could only include the visible portion of the image.";
 
 export async function captureImageBytesBySource(
   sourceUrl: string,
   documentRef: Document = document
 ): Promise<CapturedImageBytes | undefined> {
-  const images = Array.from(documentRef.querySelectorAll("img"));
-  const domIndex = images.findIndex((candidate) =>
-    imageMatchesSource(candidate, sourceUrl, documentRef)
-  );
-  const image = domIndex >= 0 ? images[domIndex] : undefined;
+  const found = findImageBySource(sourceUrl, documentRef);
+  const image = found?.image;
 
   if (!image) {
     return undefined;
@@ -36,8 +39,8 @@ export async function captureImageBytesBySource(
   return captured
     ? {
         ...captured,
-        domId: ensureContextDomId(image, domIndex),
-        domIndex
+        domId: ensureContextDomId(image, found.domIndex),
+        domIndex: found.domIndex
       }
     : undefined;
 }
@@ -46,11 +49,8 @@ export function locateImageElementBySource(
   sourceUrl: string,
   documentRef: Document = document
 ): LocatedImageElementRect | undefined {
-  const images = Array.from(documentRef.querySelectorAll("img"));
-  const domIndex = images.findIndex((candidate) =>
-    imageMatchesSource(candidate, sourceUrl, documentRef)
-  );
-  const image = domIndex >= 0 ? images[domIndex] : undefined;
+  const found = findImageBySource(sourceUrl, documentRef);
+  const image = found?.image;
 
   if (!image) {
     return undefined;
@@ -60,14 +60,46 @@ export function locateImageElementBySource(
   const view = documentRef.defaultView ?? window;
 
   return {
-    domId: ensureContextDomId(image, domIndex),
-    domIndex,
+    domId: ensureContextDomId(image, found.domIndex),
+    domIndex: found.domIndex,
     height: rect.height,
     left: rect.left,
     top: rect.top,
     viewportHeight: view.innerHeight,
     viewportWidth: view.innerWidth,
     width: rect.width
+  };
+}
+
+export function scrollImageElementIntoViewBySource(
+  sourceUrl: string,
+  documentRef: Document = document
+): LocatedImageElementRect | undefined {
+  const found = findImageBySource(sourceUrl, documentRef);
+  const image = found?.image;
+
+  if (!image) {
+    return undefined;
+  }
+
+  image.scrollIntoView?.({
+    behavior: "auto",
+    block: "center",
+    inline: "center"
+  });
+
+  const located = locateImageElementBySource(sourceUrl, documentRef);
+
+  if (!located) {
+    return undefined;
+  }
+
+  const fullyVisible = isFullyVisible(located);
+
+  return {
+    ...located,
+    fullyVisible,
+    ...(fullyVisible ? {} : { warning: PARTIAL_SCREENSHOT_WARNING })
   };
 }
 
@@ -124,6 +156,18 @@ export async function captureImageBitmapFromElement(
   } catch {
     return undefined;
   }
+}
+
+function findImageBySource(
+  sourceUrl: string,
+  documentRef: Document
+): { domIndex: number; image: HTMLImageElement } | undefined {
+  const images = Array.from(documentRef.querySelectorAll("img"));
+  const domIndex = images.findIndex((candidate) =>
+    imageMatchesSource(candidate, sourceUrl, documentRef)
+  );
+  const image = domIndex >= 0 ? images[domIndex] : undefined;
+  return image ? { domIndex, image } : undefined;
 }
 
 function imageMatchesSource(
@@ -204,6 +248,15 @@ function nameFromImage(
   } catch {
     return undefined;
   }
+}
+
+function isFullyVisible(rect: LocatedImageElementRect): boolean {
+  return (
+    rect.left >= 0 &&
+    rect.top >= 0 &&
+    rect.left + rect.width <= rect.viewportWidth &&
+    rect.top + rect.height <= rect.viewportHeight
+  );
 }
 
 function canvasToBlob(

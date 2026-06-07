@@ -132,6 +132,73 @@ describe("job manager", () => {
     ]);
   });
 
+  it("keeps context menu capture warnings in the final source tab status", async () => {
+    const states: unknown[] = [];
+    const manager = createJobManager({
+      setActionStatus: async () => undefined,
+      setTabJobState: async (tabId, state) => {
+        states.push({ state, tabId });
+        return { ...state, updatedAt: "now" };
+      },
+      translateContextMenuImage: async () => ({
+        jobId: "job_1",
+        ok: true,
+        replacementCount: 1,
+        status: "completed",
+        warning:
+          "Warning: screenshot fallback could only include the visible portion of the image."
+      })
+    });
+
+    await manager.translateContextMenuImage({
+      srcUrl: "https://manga.example/page.png",
+      tabId: 7
+    });
+
+    expect(states.at(-1)).toEqual({
+      state: {
+        jobId: "job_1",
+        message:
+          "Replaced 1 image. Warning: screenshot fallback could only include the visible portion of the image.",
+        phase: "completed",
+        status: "completed"
+      },
+      tabId: 7
+    });
+  });
+
+  it("keeps queue capture warnings in the queued source tab status", async () => {
+    const states: unknown[] = [];
+    const manager = createJobManager({
+      queueContextMenuImage: async () => ({
+        count: 1,
+        ok: true,
+        warning:
+          "Warning: screenshot fallback could only include the visible portion of the image."
+      }),
+      setTabJobState: async (tabId, state) => {
+        states.push({ state, tabId });
+        return { ...state, updatedAt: "now" };
+      },
+      updateQueueBadge: async () => undefined,
+      updateQueueMenuTitle: async () => undefined
+    });
+
+    await manager.queueContextMenuImage({
+      srcUrl: "https://manga.example/page.png",
+      tabId: 7
+    });
+
+    expect(states.at(-1)).toEqual({
+      state: {
+        message:
+          "Added 1 page to project. Warning: screenshot fallback could only include the visible portion of the image.",
+        status: "queued"
+      },
+      tabId: 7
+    });
+  });
+
   it("stores queue finalization phase status for the source tab", async () => {
     const states: unknown[] = [];
     const manager = createJobManager({

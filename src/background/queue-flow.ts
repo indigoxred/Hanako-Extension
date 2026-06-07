@@ -23,7 +23,7 @@ import { type FetchImageBytes } from "./image-bytes.js";
 import type { ExtensionSettings } from "../options/extension-settings.js";
 
 export type QueueImageResult =
-  | { ok: true; count: number }
+  | { ok: true; count: number; warning?: string }
   | { ok: false; error: string };
 
 export type SendQueueResult =
@@ -109,7 +109,11 @@ export async function queueContextMenuImage({
     ...(image.width === undefined ? {} : { width: image.width })
   });
 
-  return { count: queued.count, ok: true };
+  return {
+    count: queued.count,
+    ok: true,
+    ...(image.warning ? { warning: image.warning } : {})
+  };
 }
 
 export async function sendQueuedImages({

@@ -41,6 +41,7 @@ export type ContextMenuTranslationResult =
       jobId: string;
       replacementCount: number;
       status: "completed" | "timeout";
+      warning?: string;
     }
   | { ok: false; error: string; jobId?: string; status?: "failed" };
 
@@ -67,6 +68,7 @@ export interface ReplaceContextImageInput {
 export interface ContextImageBytesPayload extends ImageBytesPayload {
   domIndex?: number;
   domId?: string;
+  warning?: string;
 }
 
 export interface CaptureContextImageInput {
@@ -93,6 +95,10 @@ export interface ResolveContextImageBytesDependencies {
   captureImageBytesInNewTab?: CaptureContextImageBytesInNewTab;
   captureVisibleImageBytes?: CaptureVisibleContextImageBytes;
   fetchImageBytes?: FetchImageBytes;
+}
+
+interface ResolvedContextImageCandidate extends ExtensionImageCandidate {
+  warning?: string;
 }
 
 export interface TranslateContextMenuImageDependencies {
@@ -169,13 +175,22 @@ export async function translateContextMenuImage({
     };
   }
 
+  if (image.warning) {
+    await emitPhase(onPhase, {
+      message: image.warning,
+      phase: "capturing-image"
+    });
+  }
+
+  const uploadImage = withoutCaptureWarning(image);
+
   await emitPhase(onPhase, {
     message: "Submitting image to Hanako",
     phase: "submitting-job"
   });
   const detail = await translateImage({
     baseUrl: settings.hanakoBaseUrl,
-    image,
+    image: uploadImage,
     targetLanguage: settings.targetLanguage
   });
   await emitPhase(onPhase, {
@@ -226,7 +241,8 @@ export async function translateContextMenuImage({
       jobId: detail.job.id,
       ok: true,
       replacementCount: 0,
-      status: "timeout"
+      status: "timeout",
+      ...(image.warning ? { warning: image.warning } : {})
     };
   }
 
@@ -272,7 +288,8 @@ export async function translateContextMenuImage({
     jobId: detail.job.id,
     ok: true,
     replacementCount: replaced.replaced,
-    status: "completed"
+    status: "completed",
+    ...(image.warning ? { warning: image.warning } : {})
   };
 }
 
@@ -286,7 +303,7 @@ async function emitPhase(
 export async function resolveContextImageBytes(
   input: CaptureContextImageInput,
   dependencies: ResolveContextImageBytesDependencies = {}
-): Promise<ExtensionImageCandidate | undefined> {
+): Promise<ResolvedContextImageCandidate | undefined> {
   const base = compactImageCandidate({
     pageUrl: input.pageUrl,
     url: input.sourceUrl
@@ -371,6 +388,9 @@ export async function captureContextImageBytesInNewTab(
     dependencies.executeContentScript ?? defaultExecuteContentScript;
   const sendCaptureMessage =
     dependencies.sendCaptureMessage ?? defaultSendCaptureMessage;
+  const waitForCaptureRetry =
+    dependencies.waitForCaptureRetry ?? defaultWaitForCaptureRetry;
+  const maxCaptureAttempts = dependencies.maxCaptureAttempts ?? 20;
   const tab = await createTab(input.sourceUrl).catch(() => undefined);
   const tabId = tab?.id;
   const tabStatus = tab?.status;
@@ -382,10 +402,22 @@ export async function captureContextImageBytesInNewTab(
   try {
     await waitForTabComplete(tabId, tabStatus);
     await executeContentScript(tabId);
-    const response = await sendCaptureMessage(tabId, input.sourceUrl).catch(
-      () => undefined
-    );
-    return isCaptureImageBytesResponse(response) ? response.image : undefined;
+
+    for (let attempt = 1; attempt <= maxCaptureAttempts; attempt += 1) {
+      const response = await sendCaptureMessage(tabId, input.sourceUrl).catch(
+        () => undefined
+      );
+
+      if (isCaptureImageBytesResponse(response)) {
+        return response.image;
+      }
+
+      if (attempt < maxCaptureAttempts) {
+        await waitForCaptureRetry(attempt);
+      }
+    }
+
+    return undefined;
   } finally {
     await removeTab(tabId).catch(() => undefined);
   }
@@ -400,10 +432,16 @@ export async function captureVisibleContextImageBytes(
     target: { tabId: input.tabId }
   });
 
-  const located = (await chrome.tabs.sendMessage(input.tabId, {
+  const scrolled = (await chrome.tabs.sendMessage(input.tabId, {
     sourceUrl: input.sourceUrl,
-    type: "HANAKO_LOCATE_IMAGE_ELEMENT"
+    type: "HANAKO_SCROLL_IMAGE_INTO_VIEW"
   })) as unknown;
+  const located = isLocatedImageElementResponse(scrolled)
+    ? scrolled
+    : ((await chrome.tabs.sendMessage(input.tabId, {
+        sourceUrl: input.sourceUrl,
+        type: "HANAKO_LOCATE_IMAGE_ELEMENT"
+      })) as unknown);
 
   if (!isLocatedImageElementResponse(located)) {
     return undefined;
@@ -422,7 +460,8 @@ export async function captureVisibleContextImageBytes(
     ? {
         ...captured,
         domId: located.rect.domId,
-        domIndex: located.rect.domIndex
+        domIndex: located.rect.domIndex,
+        ...(located.rect.warning ? { warning: located.rect.warning } : {})
       }
     : undefined;
 }
@@ -474,8 +513,10 @@ function isCaptureImageBytesResponse(response: unknown): response is {
 interface ImageTabCaptureDependencies {
   createTab?: (url: string) => Promise<{ id?: number; status?: string }>;
   executeContentScript?: (tabId: number) => Promise<void>;
+  maxCaptureAttempts?: number;
   removeTab?: (tabId: number) => Promise<void>;
   sendCaptureMessage?: (tabId: number, sourceUrl: string) => Promise<unknown>;
+  waitForCaptureRetry?: (attempt: number) => Promise<void>;
   waitForTabComplete?: (tabId: number, initialStatus?: string) => Promise<void>;
 }
 
@@ -519,6 +560,10 @@ function defaultSendCaptureMessage(
   });
 }
 
+function defaultWaitForCaptureRetry(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 250));
+}
+
 function defaultWaitForImageTabComplete(
   tabId: number,
   initialStatus?: string
@@ -552,7 +597,12 @@ function defaultWaitForImageTabComplete(
 
 function isLocatedImageElementResponse(response: unknown): response is {
   ok: true;
-  rect: VisibleElementRect & { domIndex: number; domId: string };
+  rect: VisibleElementRect & {
+    domIndex: number;
+    domId: string;
+    fullyVisible?: boolean;
+    warning?: string;
+  };
 } {
   return (
     typeof response === "object" &&
@@ -570,7 +620,8 @@ function isLocatedImageElementResponse(response: unknown): response is {
     isNumberProperty(response.rect, "width") &&
     isNumberProperty(response.rect, "domIndex") &&
     "domId" in response.rect &&
-    typeof response.rect.domId === "string"
+    typeof response.rect.domId === "string" &&
+    (!("warning" in response.rect) || typeof response.rect.warning === "string")
   );
 }
 
@@ -585,8 +636,8 @@ function isNumberProperty(
 }
 
 function hasSupportedImageBytes(
-  image: ExtensionImageCandidate | undefined
-): image is ExtensionImageCandidate & ImageBytesPayload {
+  image: ResolvedContextImageCandidate | undefined
+): image is ResolvedContextImageCandidate & ImageBytesPayload {
   return Boolean(
     image?.bytesBase64 &&
     image.mediaType &&
@@ -603,4 +654,12 @@ function isHttpUrl(rawUrl: string): boolean {
   } catch {
     return false;
   }
+}
+
+function withoutCaptureWarning(
+  image: ResolvedContextImageCandidate
+): ExtensionImageCandidate {
+  const uploadImage = { ...image };
+  delete uploadImage.warning;
+  return uploadImage;
 }

@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   captureImageBitmapFromElement,
   captureImageBytesBySource,
-  locateImageElementBySource
+  locateImageElementBySource,
+  scrollImageElementIntoViewBySource
 } from "../src/content/image-bitmap.js";
 
 describe("content image bitmap capture", () => {
@@ -183,5 +184,53 @@ describe("content image bitmap capture", () => {
       width: 300
     });
     expect(image.dataset.hanakoDomId).toBe("hanako-context-img-1");
+  });
+
+  it("scrolls the matching image into view and warns when the whole image cannot fit", () => {
+    document.body.innerHTML = `
+      <img src="https://manga.example/page-1.jpg" width="700" height="1200">
+    `;
+    const image = document.querySelector("img");
+
+    if (!image) {
+      throw new Error("Expected test image");
+    }
+
+    const scrollIntoView = vi.fn();
+    image.scrollIntoView = scrollIntoView;
+    Object.defineProperty(image, "currentSrc", {
+      configurable: true,
+      value: "https://manga.example/page-1.jpg"
+    });
+    image.getBoundingClientRect = () =>
+      ({
+        bottom: 1200,
+        height: 1200,
+        left: 0,
+        right: 700,
+        top: 0,
+        width: 700,
+        x: 0,
+        y: 0
+      }) as DOMRect;
+
+    expect(
+      scrollImageElementIntoViewBySource(
+        "https://manga.example/page-1.jpg",
+        document
+      )
+    ).toMatchObject({
+      domId: "hanako-context-img-0",
+      domIndex: 0,
+      fullyVisible: false,
+      height: 1200,
+      warning:
+        "Warning: screenshot fallback could only include the visible portion of the image."
+    });
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "auto",
+      block: "center",
+      inline: "center"
+    });
   });
 });

@@ -115,9 +115,12 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
           updateQueueBadge(result.count),
           updateQueueMenuTitle(result.count),
           setContextTabJobState(context, {
-            message: `Added ${result.count} page${
-              result.count === 1 ? "" : "s"
-            } to project`,
+            message: withWarning(
+              `Added ${result.count} page${
+                result.count === 1 ? "" : "s"
+              } to project`,
+              result.warning
+            ),
             status: "queued"
           })
         ]);
@@ -272,7 +275,7 @@ function contextJobStateFromResult(
   if (result.status === "timeout") {
     return {
       jobId: result.jobId,
-      message: "Hanako job is still processing",
+      message: withWarning("Hanako job is still processing", result.warning),
       phase: "timeout",
       status: "timeout"
     };
@@ -280,12 +283,19 @@ function contextJobStateFromResult(
 
   return {
     jobId: result.jobId,
-    message: `Replaced ${result.replacementCount} image${
-      result.replacementCount === 1 ? "" : "s"
-    }`,
+    message: withWarning(
+      `Replaced ${result.replacementCount} image${
+        result.replacementCount === 1 ? "" : "s"
+      }`,
+      result.warning
+    ),
     phase: "completed",
     status: "completed"
   };
+}
+
+function withWarning(message: string, warning: string | undefined): string {
+  return warning ? `${message}. ${warning}` : message;
 }
 
 function jobStateFromContextPhase(
