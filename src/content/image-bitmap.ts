@@ -71,10 +71,10 @@ export function locateImageElementBySource(
   };
 }
 
-export function scrollImageElementIntoViewBySource(
+export async function scrollImageElementIntoViewBySource(
   sourceUrl: string,
   documentRef: Document = document
-): LocatedImageElementRect | undefined {
+): Promise<LocatedImageElementRect | undefined> {
   const found = findImageBySource(sourceUrl, documentRef);
   const image = found?.image;
 
@@ -87,6 +87,7 @@ export function scrollImageElementIntoViewBySource(
     block: "center",
     inline: "center"
   });
+  await waitForScrollToSettle(documentRef);
 
   const located = locateImageElementBySource(sourceUrl, documentRef);
 
@@ -101,6 +102,19 @@ export function scrollImageElementIntoViewBySource(
     fullyVisible,
     ...(fullyVisible ? {} : { warning: PARTIAL_SCREENSHOT_WARNING })
   };
+}
+
+async function waitForScrollToSettle(documentRef: Document): Promise<void> {
+  const view = documentRef.defaultView ?? window;
+  const requestFrame = view.requestAnimationFrame?.bind(view);
+
+  if (!requestFrame) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return;
+  }
+
+  await new Promise<void>((resolve) => requestFrame(() => resolve()));
+  await new Promise<void>((resolve) => requestFrame(() => resolve()));
 }
 
 export async function captureImageBitmapFromElement(

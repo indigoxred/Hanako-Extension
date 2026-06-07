@@ -186,7 +186,7 @@ describe("content image bitmap capture", () => {
     expect(image.dataset.hanakoDomId).toBe("hanako-context-img-1");
   });
 
-  it("scrolls the matching image into view and warns when the whole image cannot fit", () => {
+  it("scrolls the matching image into view and warns when the whole image cannot fit", async () => {
     document.body.innerHTML = `
       <img src="https://manga.example/page-1.jpg" width="700" height="1200">
     `;
@@ -214,12 +214,12 @@ describe("content image bitmap capture", () => {
         y: 0
       }) as DOMRect;
 
-    expect(
+    await expect(
       scrollImageElementIntoViewBySource(
         "https://manga.example/page-1.jpg",
         document
       )
-    ).toMatchObject({
+    ).resolves.toMatchObject({
       domId: "hanako-context-img-0",
       domIndex: 0,
       fullyVisible: false,
@@ -232,5 +232,59 @@ describe("content image bitmap capture", () => {
       block: "center",
       inline: "center"
     });
+  });
+
+  it("waits for the scroll frame before returning the screenshot rectangle", async () => {
+    const calls: string[] = [];
+    let scrolledFrameSettled = false;
+    const image = {
+      currentSrc: "https://manga.example/page-1.jpg",
+      dataset: {} as DOMStringMap,
+      getAttribute: (name: string) =>
+        name === "src" ? "https://manga.example/page-1.jpg" : null,
+      getBoundingClientRect: () => {
+        calls.push(scrolledFrameSettled ? "rect:settled" : "rect:initial");
+        return {
+          bottom: scrolledFrameSettled ? 420 : 1220,
+          height: 400,
+          left: 25,
+          right: 325,
+          top: scrolledFrameSettled ? 20 : 820,
+          width: 300,
+          x: 25,
+          y: scrolledFrameSettled ? 20 : 820
+        } as DOMRect;
+      },
+      scrollIntoView: () => {
+        calls.push("scroll");
+      },
+      src: "https://manga.example/page-1.jpg"
+    } as unknown as HTMLImageElement;
+    const documentRef = {
+      defaultView: {
+        innerHeight: 800,
+        innerWidth: 1000,
+        requestAnimationFrame: (callback: FrameRequestCallback) => {
+          calls.push("raf");
+          scrolledFrameSettled = true;
+          callback(0);
+          return 1;
+        }
+      },
+      location: { href: "https://manga.example/chapter" },
+      querySelectorAll: (selector: string) =>
+        selector === "img" ? [image] : []
+    } as unknown as Document;
+
+    const result = await scrollImageElementIntoViewBySource(
+      "https://manga.example/page-1.jpg",
+      documentRef
+    );
+
+    expect(result).toMatchObject({
+      fullyVisible: true,
+      top: 20
+    });
+    expect(calls).toEqual(["scroll", "raf", "raf", "rect:settled"]);
   });
 });

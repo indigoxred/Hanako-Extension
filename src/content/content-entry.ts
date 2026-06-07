@@ -72,15 +72,26 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (isScrollImageElementIntoViewMessage(message)) {
-      const rect = scrollImageElementIntoViewBySource(message.sourceUrl);
-      sendResponse(
-        rect
-          ? { ok: true, rect }
-          : {
-              error: "The clicked image could not be scrolled into view",
-              ok: false
-            }
-      );
+      void scrollImageElementIntoViewBySource(message.sourceUrl)
+        .then((rect) => {
+          sendResponse(
+            rect
+              ? { ok: true, rect }
+              : {
+                  error: "The clicked image could not be scrolled into view",
+                  ok: false
+                }
+          );
+        })
+        .catch((error: unknown) => {
+          sendResponse({
+            error:
+              error instanceof Error
+                ? error.message
+                : "The clicked image could not be scrolled into view",
+            ok: false
+          });
+        });
       return true;
     }
 
