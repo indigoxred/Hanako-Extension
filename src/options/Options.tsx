@@ -63,6 +63,19 @@ function OptionsApp() {
             }
           />
         </label>
+        <label>
+          <input
+            checked={settings.queueContextMenusEnabled}
+            type="checkbox"
+            onChange={(event) =>
+              setSettings((current) => ({
+                ...current,
+                queueContextMenusEnabled: event.target.checked
+              }))
+            }
+          />
+          Show queue context menu actions
+        </label>
         <button type="submit">Save</button>
       </form>
       {status ? <p role="status">{status}</p> : null}

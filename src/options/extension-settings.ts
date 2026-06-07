@@ -1,5 +1,6 @@
 export interface ExtensionSettings {
   hanakoBaseUrl: string;
+  queueContextMenusEnabled?: boolean;
   targetLanguage: string;
 }
 
@@ -16,20 +17,25 @@ export interface HanakoBaseUrlValidationResult {
   value?: string;
 }
 
-export const DEFAULT_EXTENSION_SETTINGS = {
+export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   hanakoBaseUrl: "http://localhost:8787",
+  queueContextMenusEnabled: true,
   targetLanguage: "en"
-} satisfies ExtensionSettings;
+};
 
 export async function loadExtensionSettings(
   storage = getDefaultStorage()
 ): Promise<ExtensionSettings> {
-  const stored = await storage.get(DEFAULT_EXTENSION_SETTINGS);
+  const stored = await storage.get({ ...DEFAULT_EXTENSION_SETTINGS });
 
   return {
     hanakoBaseUrl: stringOrDefault(
       stored.hanakoBaseUrl,
       DEFAULT_EXTENSION_SETTINGS.hanakoBaseUrl
+    ),
+    queueContextMenusEnabled: booleanOrDefault(
+      stored.queueContextMenusEnabled,
+      DEFAULT_EXTENSION_SETTINGS.queueContextMenusEnabled ?? true
     ),
     targetLanguage: stringOrDefault(
       stored.targetLanguage,
@@ -50,6 +56,7 @@ export async function saveExtensionSettings(
 
   await storage.set({
     hanakoBaseUrl: validated.value,
+    queueContextMenusEnabled: settings.queueContextMenusEnabled !== false,
     targetLanguage:
       settings.targetLanguage.trim() ||
       DEFAULT_EXTENSION_SETTINGS.targetLanguage
@@ -62,6 +69,10 @@ export function getDefaultStorage(): ExtensionStorageArea {
 
 function stringOrDefault(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function booleanOrDefault(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
 }
 
 export function isValidHanakoBaseUrl(value: string): boolean {

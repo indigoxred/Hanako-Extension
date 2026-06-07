@@ -12,11 +12,12 @@ import {
 import { createJobManager } from "./job-manager.js";
 import { getTabJobState } from "./job-state.js";
 import { createDetectImagesMessage } from "../popup/popup-actions.js";
+import { loadExtensionSettings } from "../options/extension-settings.js";
 
 const jobManager = createJobManager();
 
 chrome.runtime.onInstalled.addListener(() => {
-  void resetContextMenu(chrome)
+  void resetMenusFromSettings()
     .then(() => jobManager.getQueueStatus())
     .then((result) => {
       if (result.ok) {
@@ -30,6 +31,13 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(() => {
   void syncActiveExtensionJobPollingAlarm();
+  void resetMenusFromSettings();
+});
+
+chrome.storage.onChanged.addListener((changes) => {
+  if ("queueContextMenusEnabled" in changes) {
+    void resetMenusFromSettings();
+  }
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -231,4 +239,11 @@ async function getActiveTabJobState() {
     ok: true,
     state: await getTabJobState(chrome.storage.local, tab.id)
   };
+}
+
+async function resetMenusFromSettings(): Promise<void> {
+  const settings = await loadExtensionSettings();
+  await resetContextMenu(chrome, {
+    queueContextMenusEnabled: settings.queueContextMenusEnabled
+  });
 }

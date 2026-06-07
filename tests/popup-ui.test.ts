@@ -23,4 +23,12 @@ describe("popup UI", () => {
 
     expect(source).toContain("min-width: 420px");
   });
+
+  it("groups WebUI links on their own spaced row and resets success text", async () => {
+    const source = await readFile(resolve("src/popup/Popup.tsx"), "utf8");
+
+    expect(source).toContain('className="popup-link-row"');
+    expect(source).toContain("SUCCESS_STATUS_RESET_MS");
+    expect(source).toContain('setStatus("Ready")');
+  });
 });

@@ -44,6 +44,8 @@ interface SendQueueResult {
   status?: "submitted";
 }
 
+const SUCCESS_STATUS_RESET_MS = 4000;
+
 function PopupApp() {
   const [settings, setSettings] = useState<ExtensionSettings>(
     DEFAULT_EXTENSION_SETTINGS
@@ -96,6 +98,18 @@ function PopupApp() {
       window.clearInterval(refreshInterval);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isTransientSuccessStatus(status)) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setStatus("Ready");
+    }, SUCCESS_STATUS_RESET_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [status]);
 
   function refreshQueueCount() {
     return chrome.runtime
@@ -210,14 +224,39 @@ function PopupApp() {
         Clear translations
       </button>
       {jobUrl ? (
-        <a href={jobUrl} target="_blank" rel="noreferrer">
-          Open current job
-        </a>
+        <div className="popup-link-row">
+          <a href={jobUrl} target="_blank" rel="noreferrer">
+            Open current job
+          </a>
+          <a
+            href={createOpenWebUiUrl(settings)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open WebUI
+          </a>
+        </div>
       ) : null}
-      <a href={createOpenWebUiUrl(settings)} target="_blank" rel="noreferrer">
-        Open WebUI
-      </a>
+      {!jobUrl ? (
+        <div className="popup-link-row">
+          <a
+            href={createOpenWebUiUrl(settings)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open WebUI
+          </a>
+        </div>
+      ) : null}
     </main>
+  );
+}
+
+function isTransientSuccessStatus(status: string): boolean {
+  return (
+    status === "Queue cleared" ||
+    status.startsWith("Queued ") ||
+    status.startsWith("Restored ")
   );
 }
 

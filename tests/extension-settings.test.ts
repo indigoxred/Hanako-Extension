@@ -14,16 +14,19 @@ describe("extension settings", () => {
 
     await expect(loadExtensionSettings(storage)).resolves.toEqual({
       hanakoBaseUrl: "http://localhost:8787",
+      queueContextMenusEnabled: true,
       targetLanguage: "en"
     });
 
     await saveExtensionSettings(storage, {
       hanakoBaseUrl: "http://tower.local:8787",
+      queueContextMenusEnabled: false,
       targetLanguage: "ja"
     });
 
     await expect(loadExtensionSettings(storage)).resolves.toEqual({
       hanakoBaseUrl: "http://tower.local:8787",
+      queueContextMenusEnabled: false,
       targetLanguage: "ja"
     });
   });
@@ -50,18 +53,21 @@ describe("extension settings", () => {
     const storage = createMemoryStorage();
     await saveExtensionSettings(storage, {
       hanakoBaseUrl: "http://192.168.50.138:8787",
+      queueContextMenusEnabled: false,
       targetLanguage: "ja"
     });
 
     await expect(
       saveExtensionSettings(storage, {
         hanakoBaseUrl: "http://192.168.50.138",
+        queueContextMenusEnabled: true,
         targetLanguage: "ko"
       })
     ).rejects.toThrow("Hanako base URL must include http(s), host, and port");
 
     await expect(loadExtensionSettings(storage)).resolves.toEqual({
       hanakoBaseUrl: "http://192.168.50.138:8787",
+      queueContextMenusEnabled: false,
       targetLanguage: "ja"
     });
   });

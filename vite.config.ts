@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import react from "@vitejs/plugin-react";
@@ -13,6 +13,11 @@ function manifestPlugin(): Plugin {
       const outputPath = resolve("dist/manifest.json");
       await mkdir(dirname(outputPath), { recursive: true });
       await writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      await mkdir(resolve("dist/icons"), { recursive: true });
+      await copyFile(
+        resolve("src/icons/hanako-icon.png"),
+        resolve("dist/icons/hanako-icon.png")
+      );
       await wrapContentScript(resolve("dist/content/content-entry.js"));
     }
   };

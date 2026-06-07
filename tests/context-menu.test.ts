@@ -40,6 +40,28 @@ describe("context menus", () => {
     ]);
   });
 
+  it("omits queue menu items when queue context menus are disabled", () => {
+    const created: unknown[] = [];
+    createContextMenu(
+      {
+        contextMenus: {
+          create(input: chrome.contextMenus.CreateProperties) {
+            created.push(input);
+          }
+        }
+      } as Pick<typeof chrome, "contextMenus">,
+      { queueContextMenusEnabled: false }
+    );
+
+    expect(created).toEqual([
+      {
+        contexts: ["image"],
+        id: TRANSLATE_IMAGE_MENU_ID,
+        title: "Translate with Hanako"
+      }
+    ]);
+  });
+
   it("updates the queue menu title with the current count", async () => {
     const updates: unknown[] = [];
     await updateQueueMenuTitle(
@@ -73,5 +95,24 @@ describe("context menus", () => {
     } as unknown as Pick<typeof chrome, "contextMenus">);
 
     expect(calls).toEqual(["removeAll", "create", "create", "create"]);
+  });
+
+  it("resets only the translate menu when queue context menus are disabled", async () => {
+    const calls: string[] = [];
+    await resetContextMenu(
+      {
+        contextMenus: {
+          create() {
+            calls.push("create");
+          },
+          async removeAll() {
+            calls.push("removeAll");
+          }
+        }
+      } as unknown as Pick<typeof chrome, "contextMenus">,
+      { queueContextMenusEnabled: false }
+    );
+
+    expect(calls).toEqual(["removeAll", "create"]);
   });
 });
