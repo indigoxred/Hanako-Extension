@@ -207,7 +207,8 @@ export async function translateContextMenuImage({
   });
   const completed = await waitForJobCompletion({
     baseUrl: settings.hanakoBaseUrl,
-    jobId: detail.job.id
+    jobId: detail.job.id,
+    requiredRenderedPages: 1
   });
 
   if (completed.status === "failed") {

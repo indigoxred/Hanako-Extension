@@ -24,6 +24,7 @@ export interface ExtensionJobPollDetail {
 export interface WaitForJobCompletionInput extends PollJobInput {
   delayMs?: number;
   maxAttempts?: number;
+  requiredRenderedPages?: number;
 }
 
 export type WaitForJobCompletionResult =
@@ -62,13 +63,16 @@ export async function waitForJobCompletion({
   delayMs = 2_000,
   fetch: fetcher = browserFetch,
   jobId,
-  maxAttempts = 60
+  maxAttempts = 60,
+  requiredRenderedPages = 0
 }: WaitForJobCompletionInput): Promise<WaitForJobCompletionResult> {
   let latest = await pollJobOnce({ baseUrl, fetch: fetcher, jobId });
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     if (latest.job.status === "completed") {
-      return { detail: latest, status: "completed" };
+      if (hasRequiredRenderedPages(latest, requiredRenderedPages)) {
+        return { detail: latest, status: "completed" };
+      }
     }
 
     if (latest.job.status === "failed" || latest.job.status === "cancelled") {
@@ -82,6 +86,20 @@ export async function waitForJobCompletion({
   }
 
   return { detail: latest, status: "timeout" };
+}
+
+function hasRequiredRenderedPages(
+  detail: ExtensionJobPollDetail,
+  requiredRenderedPages: number
+): boolean {
+  if (requiredRenderedPages <= 0) {
+    return true;
+  }
+
+  return (
+    (detail.pages ?? []).filter((page) => Boolean(page.renderedAssetId))
+      .length >= requiredRenderedPages
+  );
 }
 
 async function delay(delayMs: number): Promise<void> {

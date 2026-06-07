@@ -142,6 +142,45 @@ describe("context menu translation flow", () => {
     ]);
   });
 
+  it("asks the job poller to wait for the rendered page before replacing a clicked image", async () => {
+    const waitInputs: unknown[] = [];
+
+    await translateContextMenuImage({
+      context: {
+        srcUrl: "https://manga.example/page-1.png",
+        tabId: 12
+      },
+      captureImageBytes: async () => ({
+        bytesBase64: "cGFnZSAx",
+        mediaType: "image/png"
+      }),
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      replaceImage: async () => ({ ok: true, replaced: 1 }),
+      translateImage: async () => ({ job: { id: "job_1" } }),
+      waitForJobCompletion: async (input) => {
+        waitInputs.push(input);
+        return {
+          detail: {
+            job: { id: "job_1", status: "completed" },
+            pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+          },
+          status: "completed"
+        };
+      }
+    });
+
+    expect(waitInputs).toEqual([
+      {
+        baseUrl: "http://localhost:8787",
+        jobId: "job_1",
+        requiredRenderedPages: 1
+      }
+    ]);
+  });
+
   it("emits active phases while translating and replacing a clicked image", async () => {
     const phases: unknown[] = [];
 

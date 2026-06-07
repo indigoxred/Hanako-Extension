@@ -74,6 +74,36 @@ describe("Hanako extension client", () => {
     });
   });
 
+  it("keeps polling a completed extension job until required rendered pages appear", async () => {
+    const responses = [
+      {
+        job: { id: "job_1", status: "completed" },
+        pages: [{ id: "page_1" }]
+      },
+      {
+        job: { id: "job_1", status: "completed" },
+        pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+      }
+    ];
+
+    const result = await waitForJobCompletion({
+      baseUrl: "http://hanako.test",
+      delayMs: 0,
+      fetch: async () => new Response(JSON.stringify(responses.shift())),
+      jobId: "job_1",
+      maxAttempts: 3,
+      requiredRenderedPages: 1
+    });
+
+    expect(result).toEqual({
+      detail: {
+        job: { id: "job_1", status: "completed" },
+        pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+      },
+      status: "completed"
+    });
+  });
+
   it("stops polling when an extension job fails", async () => {
     const result = await waitForJobCompletion({
       baseUrl: "http://hanako.test",

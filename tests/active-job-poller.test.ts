@@ -112,4 +112,90 @@ describe("active extension job poller", () => {
       })
     ).resolves.toEqual({ polled: 0 });
   });
+
+  it("keeps polling completed active jobs until rendered page metadata appears", async () => {
+    const storage = createStorage();
+    const replacements: unknown[] = [];
+    const states: unknown[] = [];
+    const responses = [
+      {
+        job: { id: "job_1", status: "completed" },
+        pages: [{ id: "page_1" }]
+      },
+      {
+        job: { id: "job_1", status: "completed" },
+        pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+      }
+    ];
+
+    await trackActiveExtensionJob(storage, {
+      baseUrl: "http://hanako.test",
+      imageCount: 1,
+      jobId: "job_1",
+      replacements: [
+        {
+          domId: "hanako-img-1",
+          domIndex: 0,
+          sourceUrl: "https://manga.example/page-1.png"
+        }
+      ],
+      tabId: 7
+    });
+
+    await pollActiveExtensionJobsOnce({
+      executeContentScript: async () => {
+        throw new Error("Should not replace before rendered page metadata");
+      },
+      pollJobOnce: async () => responses.shift()!,
+      sendReplaceImagesMessage: async () => {
+        throw new Error("Should not replace before rendered page metadata");
+      },
+      setTabJobState: async (tabId, state) => {
+        states.push({ state, tabId });
+        return { ...state, updatedAt: "now" };
+      },
+      storage
+    });
+
+    expect(states.at(-1)).toEqual({
+      state: {
+        jobId: "job_1",
+        message: "Waiting for Hanako rendered pages",
+        phase: "waiting-for-job",
+        status: "running"
+      },
+      tabId: 7
+    });
+
+    await pollActiveExtensionJobsOnce({
+      executeContentScript: async () => undefined,
+      pollJobOnce: async () => responses.shift()!,
+      sendReplaceImagesMessage: async (tabId, input) => {
+        replacements.push({ input, tabId });
+        return { ok: true, replaced: input.replacements.length };
+      },
+      setTabJobState: async (tabId, state) => {
+        states.push({ state, tabId });
+        return { ...state, updatedAt: "now" };
+      },
+      storage
+    });
+
+    expect(replacements).toEqual([
+      {
+        input: {
+          replacements: [
+            {
+              domId: "hanako-img-1",
+              domIndex: 0,
+              renderedUrl:
+                "http://hanako.test/api/jobs/job_1/pages/page_1/rendered",
+              sourceUrl: "https://manga.example/page-1.png"
+            }
+          ]
+        },
+        tabId: 7
+      }
+    ]);
+  });
 });

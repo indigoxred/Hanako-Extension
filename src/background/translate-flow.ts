@@ -143,7 +143,8 @@ export async function translateActiveTab(
 
   const completed = await waitForJobCompletion({
     baseUrl: settings.hanakoBaseUrl,
-    jobId: detail.job.id
+    jobId: detail.job.id,
+    requiredRenderedPages: uploadImages.length
   });
 
   if (completed.status === "failed") {

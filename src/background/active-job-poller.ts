@@ -270,6 +270,21 @@ async function pollActiveExtensionJob(input: {
     return;
   }
 
+  if (!hasExpectedRenderedPages(job, detail)) {
+    await updateActiveJob(input.storage, {
+      ...job,
+      pollAttempts: job.pollAttempts + 1,
+      updatedAt: input.now().toISOString()
+    });
+    await input.setTabJobState(job.tabId, {
+      jobId: job.jobId,
+      message: "Waiting for Hanako rendered pages",
+      phase: "waiting-for-job",
+      status: "running"
+    });
+    return;
+  }
+
   await clearActiveExtensionJob(input.storage, job.id);
   await input.setTabJobState(job.tabId, {
     jobId: job.jobId,
@@ -277,6 +292,16 @@ async function pollActiveExtensionJob(input: {
     phase: "failed",
     status: "failed"
   });
+}
+
+function hasExpectedRenderedPages(
+  job: ActiveExtensionJob,
+  detail: ExtensionJobPollDetail
+): boolean {
+  return (
+    (detail.pages ?? []).filter((page) => Boolean(page.renderedAssetId))
+      .length >= job.replacements.length
+  );
 }
 
 function buildReplacementInstructions(
