@@ -4,8 +4,10 @@ import {
   type TranslatePageInput
 } from "./hanako-client.js";
 import {
-  captureContextImageBytes,
-  type CaptureContextImageInput,
+  resolveContextImageBytes,
+  type CaptureContextImageBytes,
+  type CaptureContextImageBytesInNewTab,
+  type CaptureVisibleContextImageBytes,
   type ContextMenuImageContext
 } from "./context-menu-flow.js";
 import { createTranslationCacheKey } from "./translation-cache.js";
@@ -17,11 +19,7 @@ import {
 } from "./queue-state.js";
 import { loadExtensionSettings } from "../options/extension-settings.js";
 
-import {
-  withRequiredImageBytes,
-  type FetchImageBytes,
-  type ImageBytesPayload
-} from "./image-bytes.js";
+import { type FetchImageBytes } from "./image-bytes.js";
 import type { ExtensionSettings } from "../options/extension-settings.js";
 
 export type QueueImageResult =
@@ -39,9 +37,9 @@ export type SendQueueResult =
   | { ok: false; error: string };
 
 export interface QueueContextMenuImageInput {
-  captureImageBytes?: (
-    input: CaptureContextImageInput
-  ) => Promise<ImageBytesPayload | undefined>;
+  captureImageBytes?: CaptureContextImageBytes;
+  captureImageBytesInNewTab?: CaptureContextImageBytesInNewTab;
+  captureVisibleImageBytes?: CaptureVisibleContextImageBytes;
   context: ContextMenuImageContext;
   fetchImageBytes?: FetchImageBytes;
   loadSettings?: () => Promise<ExtensionSettings>;
@@ -55,7 +53,9 @@ export interface SendQueuedImagesInput {
 }
 
 export async function queueContextMenuImage({
-  captureImageBytes = captureContextImageBytes,
+  captureImageBytes,
+  captureImageBytesInNewTab,
+  captureVisibleImageBytes,
   context,
   fetchImageBytes,
   loadSettings = loadExtensionSettings,
@@ -69,21 +69,20 @@ export async function queueContextMenuImage({
     return { error: "No source tab was available", ok: false };
   }
 
-  const captured = await captureImageBytes({
-    ...(context.pageUrl ? { pageUrl: context.pageUrl } : {}),
-    sourceUrl: context.srcUrl,
-    tabId: context.tabId,
-    ...(context.windowId === undefined ? {} : { windowId: context.windowId })
-  }).catch(() => undefined);
-
-  const image = await withRequiredImageBytes(
+  const image = await resolveContextImageBytes(
     {
       ...(context.pageUrl ? { pageUrl: context.pageUrl } : {}),
-      url: context.srcUrl,
-      ...(captured ?? {})
+      sourceUrl: context.srcUrl,
+      tabId: context.tabId,
+      ...(context.windowId === undefined ? {} : { windowId: context.windowId })
     },
-    fetchImageBytes
-  ).catch(() => undefined);
+    {
+      captureImageBytes,
+      captureImageBytesInNewTab,
+      captureVisibleImageBytes,
+      fetchImageBytes
+    }
+  );
 
   if (!image?.bytesBase64 || !image.mediaType) {
     return {
@@ -106,7 +105,7 @@ export async function queueContextMenuImage({
     ...(image.height === undefined ? {} : { height: image.height }),
     mediaType: image.mediaType,
     ...(context.pageUrl ? { pageUrl: context.pageUrl } : {}),
-    sourceUrl: context.srcUrl,
+    sourceUrl: image.url,
     ...(image.width === undefined ? {} : { width: image.width })
   });
 

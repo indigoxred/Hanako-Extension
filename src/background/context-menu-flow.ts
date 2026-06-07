@@ -10,10 +10,14 @@ import {
   type TranslateImageInput
 } from "./hanako-client.js";
 import {
-  withRequiredImageBytes,
+  withImageBytes,
   type FetchImageBytes,
   type ImageBytesPayload
 } from "./image-bytes.js";
+import {
+  captureVisibleElementBitmap as defaultCaptureVisibleElementBitmap,
+  type VisibleElementRect
+} from "./visible-tab-capture.js";
 import {
   createRenderedPageUrl,
   waitForJobCompletion as defaultWaitForJobCompletion,
@@ -72,10 +76,29 @@ export interface CaptureContextImageInput {
   windowId?: number;
 }
 
+export type CaptureContextImageBytes = (
+  input: CaptureContextImageInput
+) => Promise<ContextImageBytesPayload | undefined>;
+
+export type CaptureContextImageBytesInNewTab = (
+  input: CaptureContextImageInput
+) => Promise<ContextImageBytesPayload | undefined>;
+
+export type CaptureVisibleContextImageBytes = (
+  input: CaptureContextImageInput
+) => Promise<ContextImageBytesPayload | undefined>;
+
+export interface ResolveContextImageBytesDependencies {
+  captureImageBytes?: CaptureContextImageBytes;
+  captureImageBytesInNewTab?: CaptureContextImageBytesInNewTab;
+  captureVisibleImageBytes?: CaptureVisibleContextImageBytes;
+  fetchImageBytes?: FetchImageBytes;
+}
+
 export interface TranslateContextMenuImageDependencies {
-  captureImageBytes?: (
-    input: CaptureContextImageInput
-  ) => Promise<ContextImageBytesPayload | undefined>;
+  captureImageBytes?: CaptureContextImageBytes;
+  captureImageBytesInNewTab?: CaptureContextImageBytesInNewTab;
+  captureVisibleImageBytes?: CaptureVisibleContextImageBytes;
   context: ContextMenuImageContext;
   fetchImageBytes?: FetchImageBytes;
   loadSettings?: () => Promise<ExtensionSettings>;
@@ -94,7 +117,9 @@ export interface TranslateContextMenuImageDependencies {
 }
 
 export async function translateContextMenuImage({
-  captureImageBytes = captureContextImageBytes,
+  captureImageBytes,
+  captureImageBytesInNewTab,
+  captureVisibleImageBytes,
   context,
   fetchImageBytes,
   loadSettings = loadExtensionSettings,
@@ -118,23 +143,20 @@ export async function translateContextMenuImage({
     message: "Capturing clicked image",
     phase: "capturing-image"
   });
-  const captured = await captureImageBytes({
-    ...(context.pageUrl ? { pageUrl: context.pageUrl } : {}),
-    sourceUrl: context.srcUrl,
-    tabId: context.tabId,
-    ...(context.windowId === undefined ? {} : { windowId: context.windowId })
-  }).catch(() => undefined);
-
-  const image = await withRequiredImageBytes(
+  const image = await resolveContextImageBytes(
     {
-      ...compactImageCandidate({
-        pageUrl: context.pageUrl,
-        url: context.srcUrl
-      }),
-      ...(captured ?? {})
+      ...(context.pageUrl ? { pageUrl: context.pageUrl } : {}),
+      sourceUrl: context.srcUrl,
+      tabId: context.tabId,
+      ...(context.windowId === undefined ? {} : { windowId: context.windowId })
     },
-    fetchImageBytes
-  ).catch(() => undefined);
+    {
+      captureImageBytes,
+      captureImageBytesInNewTab,
+      captureVisibleImageBytes,
+      fetchImageBytes
+    }
+  );
 
   if (!image?.bytesBase64 || !image.mediaType) {
     await emitPhase(onPhase, {
@@ -261,6 +283,59 @@ async function emitPhase(
   await onPhase?.(phase);
 }
 
+export async function resolveContextImageBytes(
+  input: CaptureContextImageInput,
+  dependencies: ResolveContextImageBytesDependencies = {}
+): Promise<ExtensionImageCandidate | undefined> {
+  const base = compactImageCandidate({
+    pageUrl: input.pageUrl,
+    url: input.sourceUrl
+  });
+  const captureImageBytes =
+    dependencies.captureImageBytes ?? captureContextImageBytes;
+  const captureImageBytesInNewTab =
+    dependencies.captureImageBytesInNewTab ?? captureContextImageBytesInNewTab;
+  const captureVisibleImageBytes =
+    dependencies.captureVisibleImageBytes ?? captureVisibleContextImageBytes;
+  const captured = await captureImageBytes(input).catch(() => undefined);
+  const sourceFetched = await withImageBytes(
+    {
+      ...base,
+      ...(captured ?? {})
+    },
+    dependencies.fetchImageBytes
+  ).catch(() => ({
+    ...base,
+    ...(captured ?? {})
+  }));
+
+  if (hasSupportedImageBytes(sourceFetched)) {
+    return sourceFetched;
+  }
+
+  const imageTabCaptured = await captureImageBytesInNewTab(input).catch(
+    () => undefined
+  );
+  const imageTabImage = {
+    ...base,
+    ...(imageTabCaptured ?? {})
+  };
+
+  if (hasSupportedImageBytes(imageTabImage)) {
+    return imageTabImage;
+  }
+
+  const visibleCaptured = await captureVisibleImageBytes(input).catch(
+    () => undefined
+  );
+  const visibleImage = {
+    ...base,
+    ...(visibleCaptured ?? {})
+  };
+
+  return hasSupportedImageBytes(visibleImage) ? visibleImage : undefined;
+}
+
 export async function captureContextImageBytes(
   input: CaptureContextImageInput
 ): Promise<ContextImageBytesPayload | undefined> {
@@ -278,6 +353,78 @@ export async function captureContextImageBytes(
     return response.image;
   }
   return undefined;
+}
+
+export async function captureContextImageBytesInNewTab(
+  input: CaptureContextImageInput,
+  dependencies: ImageTabCaptureDependencies = {}
+): Promise<ContextImageBytesPayload | undefined> {
+  if (!isHttpUrl(input.sourceUrl)) {
+    return undefined;
+  }
+
+  const createTab = dependencies.createTab ?? defaultCreateImageTab;
+  const removeTab = dependencies.removeTab ?? defaultRemoveTab;
+  const waitForTabComplete =
+    dependencies.waitForTabComplete ?? defaultWaitForImageTabComplete;
+  const executeContentScript =
+    dependencies.executeContentScript ?? defaultExecuteContentScript;
+  const sendCaptureMessage =
+    dependencies.sendCaptureMessage ?? defaultSendCaptureMessage;
+  const tab = await createTab(input.sourceUrl).catch(() => undefined);
+  const tabId = tab?.id;
+  const tabStatus = tab?.status;
+
+  if (tabId === undefined) {
+    return undefined;
+  }
+
+  try {
+    await waitForTabComplete(tabId, tabStatus);
+    await executeContentScript(tabId);
+    const response = await sendCaptureMessage(tabId, input.sourceUrl).catch(
+      () => undefined
+    );
+    return isCaptureImageBytesResponse(response) ? response.image : undefined;
+  } finally {
+    await removeTab(tabId).catch(() => undefined);
+  }
+}
+
+export async function captureVisibleContextImageBytes(
+  input: CaptureContextImageInput,
+  dependencies: VisibleContextImageCaptureDependencies = {}
+): Promise<ContextImageBytesPayload | undefined> {
+  await chrome.scripting.executeScript({
+    files: ["content/content-entry.js"],
+    target: { tabId: input.tabId }
+  });
+
+  const located = (await chrome.tabs.sendMessage(input.tabId, {
+    sourceUrl: input.sourceUrl,
+    type: "HANAKO_LOCATE_IMAGE_ELEMENT"
+  })) as unknown;
+
+  if (!isLocatedImageElementResponse(located)) {
+    return undefined;
+  }
+
+  const captureVisibleElementBitmap =
+    dependencies.captureVisibleElementBitmap ??
+    defaultCaptureVisibleElementBitmap;
+  const captured = await captureVisibleElementBitmap({
+    rect: located.rect,
+    sourceUrl: input.sourceUrl,
+    ...(input.windowId === undefined ? {} : { windowId: input.windowId })
+  });
+
+  return captured
+    ? {
+        ...captured,
+        domId: located.rect.domId,
+        domIndex: located.rect.domIndex
+      }
+    : undefined;
 }
 
 async function defaultReplaceImage(
@@ -322,4 +469,138 @@ function isCaptureImageBytesResponse(response: unknown): response is {
     "mediaType" in response.image &&
     typeof response.image.mediaType === "string"
   );
+}
+
+interface ImageTabCaptureDependencies {
+  createTab?: (url: string) => Promise<{ id?: number; status?: string }>;
+  executeContentScript?: (tabId: number) => Promise<void>;
+  removeTab?: (tabId: number) => Promise<void>;
+  sendCaptureMessage?: (tabId: number, sourceUrl: string) => Promise<unknown>;
+  waitForTabComplete?: (tabId: number, initialStatus?: string) => Promise<void>;
+}
+
+interface VisibleContextImageCaptureDependencies {
+  captureVisibleElementBitmap?: (input: {
+    rect: VisibleElementRect;
+    sourceUrl: string;
+    windowId?: number;
+  }) => Promise<ImageBytesPayload | undefined>;
+}
+
+function defaultCreateImageTab(
+  url: string
+): Promise<{ id?: number; status?: string }> {
+  return chrome.tabs.create({ active: false, url }) as Promise<{
+    id?: number;
+    status?: string;
+  }>;
+}
+
+function defaultRemoveTab(tabId: number): Promise<void> {
+  return chrome.tabs.remove(tabId).then(() => undefined);
+}
+
+function defaultExecuteContentScript(tabId: number): Promise<void> {
+  return chrome.scripting
+    .executeScript({
+      files: ["content/content-entry.js"],
+      target: { tabId }
+    })
+    .then(() => undefined);
+}
+
+function defaultSendCaptureMessage(
+  tabId: number,
+  sourceUrl: string
+): Promise<unknown> {
+  return chrome.tabs.sendMessage(tabId, {
+    sourceUrl,
+    type: "HANAKO_CAPTURE_IMAGE_BYTES"
+  });
+}
+
+function defaultWaitForImageTabComplete(
+  tabId: number,
+  initialStatus?: string
+): Promise<void> {
+  if (initialStatus === "complete") {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const done = (
+      timeout: ReturnType<typeof setTimeout>,
+      listener: (updatedTabId: number, changeInfo: { status?: string }) => void
+    ) => {
+      clearTimeout(timeout);
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    };
+    const listener = (
+      updatedTabId: number,
+      changeInfo: { status?: string }
+    ) => {
+      if (updatedTabId === tabId && changeInfo.status === "complete") {
+        done(timeout, listener);
+      }
+    };
+    const timeout = setTimeout(() => done(timeout, listener), 15000);
+
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+function isLocatedImageElementResponse(response: unknown): response is {
+  ok: true;
+  rect: VisibleElementRect & { domIndex: number; domId: string };
+} {
+  return (
+    typeof response === "object" &&
+    response !== null &&
+    "ok" in response &&
+    response.ok === true &&
+    "rect" in response &&
+    typeof response.rect === "object" &&
+    response.rect !== null &&
+    isNumberProperty(response.rect, "height") &&
+    isNumberProperty(response.rect, "left") &&
+    isNumberProperty(response.rect, "top") &&
+    isNumberProperty(response.rect, "viewportHeight") &&
+    isNumberProperty(response.rect, "viewportWidth") &&
+    isNumberProperty(response.rect, "width") &&
+    isNumberProperty(response.rect, "domIndex") &&
+    "domId" in response.rect &&
+    typeof response.rect.domId === "string"
+  );
+}
+
+function isNumberProperty(
+  value: object,
+  property: keyof VisibleElementRect | "domIndex"
+): boolean {
+  return (
+    property in value &&
+    typeof (value as Record<string, unknown>)[property] === "number"
+  );
+}
+
+function hasSupportedImageBytes(
+  image: ExtensionImageCandidate | undefined
+): image is ExtensionImageCandidate & ImageBytesPayload {
+  return Boolean(
+    image?.bytesBase64 &&
+    image.mediaType &&
+    ["image/jpeg", "image/png", "image/webp"].includes(
+      image.mediaType.split(";")[0]?.trim().toLowerCase() ?? ""
+    )
+  );
+}
+
+function isHttpUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }

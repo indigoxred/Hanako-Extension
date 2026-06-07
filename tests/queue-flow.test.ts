@@ -68,6 +68,85 @@ describe("queue flow", () => {
     expect(await getQueuedImageCount(storage)).toBe(1);
   });
 
+  it("falls back to inactive image-tab capture before queueing an uncooperative image", async () => {
+    const storage = createMemoryStorage();
+    const fallbackCalls: string[] = [];
+    const result = await queueContextMenuImage({
+      captureImageBytes: async () => undefined,
+      captureImageBytesInNewTab: async (input) => {
+        fallbackCalls.push(`image-tab:${input.sourceUrl}`);
+        return {
+          bytesBase64: "pixiv-full-image",
+          mediaType: "image/jpeg",
+          name: "pixiv-page.jpg"
+        };
+      },
+      captureVisibleImageBytes: async () => {
+        fallbackCalls.push("visible-screenshot");
+        return undefined;
+      },
+      context: {
+        pageUrl: "https://www.pixiv.net/artworks/123",
+        srcUrl: "https://i.pximg.net/img-original/img/2026/06/07/page.jpg",
+        tabId: 5,
+        windowId: 9
+      },
+      fetchImageBytes: async () => undefined,
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      storage
+    });
+
+    expect(result).toMatchObject({ count: 1, ok: true });
+    expect(fallbackCalls).toEqual([
+      "image-tab:https://i.pximg.net/img-original/img/2026/06/07/page.jpg"
+    ]);
+    expect(await getQueuedImageCount(storage)).toBe(1);
+  });
+
+  it("uses visible screenshot capture as the last queue fallback", async () => {
+    const storage = createMemoryStorage();
+    const fallbackCalls: string[] = [];
+    const result = await queueContextMenuImage({
+      captureImageBytes: async () => undefined,
+      captureImageBytesInNewTab: async () => {
+        fallbackCalls.push("image-tab");
+        return undefined;
+      },
+      captureVisibleImageBytes: async (input) => {
+        fallbackCalls.push(`visible:${input.sourceUrl}:${input.windowId}`);
+        return {
+          bytesBase64: "visible-crop",
+          domId: "hanako-context-img-2",
+          domIndex: 2,
+          mediaType: "image/png",
+          name: "visible-page.png"
+        };
+      },
+      context: {
+        pageUrl: "https://www.pixiv.net/artworks/123",
+        srcUrl: "https://i.pximg.net/img-original/img/2026/06/07/page.jpg",
+        tabId: 5,
+        windowId: 9
+      },
+      fetchImageBytes: async () => undefined,
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      storage
+    });
+
+    expect(result).toMatchObject({ count: 1, ok: true });
+    expect(fallbackCalls).toEqual([
+      "image-tab",
+      "visible:https://i.pximg.net/img-original/img/2026/06/07/page.jpg:9"
+    ]);
+    expect(await getQueuedImageCount(storage)).toBe(1);
+  });
+
   it("sends queued images as one Hanako page project and clears queue on success", async () => {
     const storage = createMemoryStorage();
     await queueContextMenuImage({
