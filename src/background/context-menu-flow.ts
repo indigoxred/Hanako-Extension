@@ -9,15 +9,7 @@ import {
   type ExtensionJobDetail,
   type TranslateImageInput
 } from "./hanako-client.js";
-import {
-  withRequiredImageBytes,
-  type FetchImageBytes,
-  type ImageBytesPayload
-} from "./image-bytes.js";
-import {
-  captureVisibleElementBitmap,
-  type VisibleElementRect
-} from "./visible-tab-capture.js";
+import type { FetchImageBytes, ImageBytesPayload } from "./image-bytes.js";
 import {
   createRenderedPageUrl,
   waitForJobCompletion as defaultWaitForJobCompletion,
@@ -100,7 +92,6 @@ export interface TranslateContextMenuImageDependencies {
 export async function translateContextMenuImage({
   captureImageBytes = captureContextImageBytes,
   context,
-  fetchImageBytes,
   loadSettings = loadExtensionSettings,
   onPhase,
   replaceImage = defaultReplaceImage,
@@ -118,7 +109,6 @@ export async function translateContextMenuImage({
   }
 
   const settings = await loadSettings();
-  let image: ExtensionImageCandidate;
   await emitPhase(onPhase, {
     message: "Capturing clicked image",
     phase: "capturing-image"
@@ -130,33 +120,24 @@ export async function translateContextMenuImage({
     ...(context.windowId === undefined ? {} : { windowId: context.windowId })
   }).catch(() => undefined);
 
-  try {
-    image = await withRequiredImageBytes(
-      {
-        ...compactImageCandidate({
-          pageUrl: context.pageUrl,
-          url: context.srcUrl
-        }),
-        ...(captured ?? {})
-      },
-      fetchImageBytes
-    );
-  } catch (error) {
+  if (!captured?.bytesBase64 || !captured.mediaType) {
     await emitPhase(onPhase, {
-      message:
-        error instanceof Error
-          ? error.message
-          : "The extension could not extract bytes for this image",
+      message: "The extension could not extract bytes for this image",
       phase: "failed"
     });
     return {
-      error:
-        error instanceof Error
-          ? error.message
-          : "The extension could not extract bytes for this image",
+      error: "The extension could not extract bytes for this image",
       ok: false
     };
   }
+
+  const image: ExtensionImageCandidate = {
+    ...compactImageCandidate({
+      pageUrl: context.pageUrl,
+      url: context.srcUrl
+    }),
+    ...captured
+  };
 
   await emitPhase(onPhase, {
     message: "Submitting image to Hanako",
@@ -288,29 +269,7 @@ export async function captureContextImageBytes(
   if (isCaptureImageBytesResponse(response)) {
     return response.image;
   }
-
-  const located = (await chrome.tabs.sendMessage(input.tabId, {
-    sourceUrl: input.sourceUrl,
-    type: "HANAKO_LOCATE_IMAGE_ELEMENT"
-  })) as unknown;
-
-  if (!isLocatedImageElementResponse(located)) {
-    return undefined;
-  }
-
-  const captured = await captureVisibleElementBitmap({
-    rect: located.rect,
-    sourceUrl: input.sourceUrl,
-    ...(input.windowId === undefined ? {} : { windowId: input.windowId })
-  });
-
-  return captured
-    ? {
-        ...captured,
-        domId: located.rect.domId,
-        domIndex: located.rect.domIndex
-      }
-    : undefined;
+  return undefined;
 }
 
 async function defaultReplaceImage(
@@ -354,39 +313,5 @@ function isCaptureImageBytesResponse(response: unknown): response is {
     typeof response.image.bytesBase64 === "string" &&
     "mediaType" in response.image &&
     typeof response.image.mediaType === "string"
-  );
-}
-
-function isLocatedImageElementResponse(response: unknown): response is {
-  ok: true;
-  rect: VisibleElementRect & { domIndex: number; domId: string };
-} {
-  return (
-    typeof response === "object" &&
-    response !== null &&
-    "ok" in response &&
-    response.ok === true &&
-    "rect" in response &&
-    typeof response.rect === "object" &&
-    response.rect !== null &&
-    isNumberProperty(response.rect, "height") &&
-    isNumberProperty(response.rect, "left") &&
-    isNumberProperty(response.rect, "top") &&
-    isNumberProperty(response.rect, "viewportHeight") &&
-    isNumberProperty(response.rect, "viewportWidth") &&
-    isNumberProperty(response.rect, "width") &&
-    isNumberProperty(response.rect, "domIndex") &&
-    "domId" in response.rect &&
-    typeof response.rect.domId === "string"
-  );
-}
-
-function isNumberProperty(
-  value: object,
-  property: keyof VisibleElementRect | "domIndex"
-): boolean {
-  return (
-    property in value &&
-    typeof (value as Record<string, unknown>)[property] === "number"
   );
 }

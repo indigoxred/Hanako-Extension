@@ -226,8 +226,9 @@ function applyVisualBackgroundLayers(
   input: { renderedUrl: string; sourceCandidates: string[] }
 ): boolean {
   let changed = false;
+  const layers = findVisualBackgroundLayers(image, input);
 
-  for (const layer of findVisualBackgroundLayers(image, input)) {
+  for (const layer of layers) {
     const currentBackground = getBackgroundImage(layer);
 
     if (!layer.dataset.hanakoOriginalBackgroundImage) {
@@ -244,7 +245,10 @@ function applyVisualBackgroundLayers(
     changed = true;
   }
 
-  return changed;
+  return (
+    ensureVisualReplacementLayer(image, input.renderedUrl, layers.length > 0) ||
+    changed
+  );
 }
 
 function restoreVisualBackgroundLayers(image: HTMLImageElement): void {
@@ -263,6 +267,8 @@ function restoreVisualBackgroundLayers(image: HTMLImageElement): void {
     delete layer.dataset.hanakoOriginalBackgroundImage;
     delete layer.dataset.hanakoRenderedBackgroundImage;
   }
+
+  removeVisualReplacementLayer(container);
 }
 
 function findVisualBackgroundLayers(
@@ -317,6 +323,79 @@ function getContainerElements(container: Element): HTMLElement[] {
   return [container, ...Array.from(container.querySelectorAll("*"))].filter(
     (element): element is HTMLElement => element instanceof HTMLElement
   );
+}
+
+function ensureVisualReplacementLayer(
+  image: HTMLImageElement,
+  renderedUrl: string,
+  hasBackgroundLayer: boolean
+): boolean {
+  const container = findVisualMediaContainer(image);
+
+  if (!container || !hasBackgroundLayer) {
+    return false;
+  }
+
+  const documentRef = image.ownerDocument;
+  let changed = false;
+  let overlay = container.querySelector<HTMLImageElement>(
+    "img[data-hanako-visual-replacement]"
+  );
+
+  if (!overlay) {
+    overlay = documentRef.createElement("img");
+    overlay.dataset.hanakoVisualReplacement = "true";
+    overlay.alt = "";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.draggable = false;
+    container.append(overlay);
+    changed = true;
+  }
+
+  if (overlay.getAttribute("src") !== renderedUrl) {
+    overlay.src = renderedUrl;
+    changed = true;
+  }
+
+  overlay.style.position = "absolute";
+  overlay.style.inset = "0";
+  overlay.style.width = "100%";
+  overlay.style.height = "100%";
+  overlay.style.objectFit = "contain";
+  overlay.style.pointerEvents = "none";
+  overlay.style.zIndex = "2147483646";
+  overlay.style.opacity = "1";
+  overlay.style.visibility = "visible";
+
+  if (container instanceof HTMLElement) {
+    const currentPosition =
+      container.style.position ||
+      container.ownerDocument.defaultView?.getComputedStyle(container)
+        .position ||
+      "";
+
+    if (currentPosition === "" || currentPosition === "static") {
+      container.dataset.hanakoOriginalPosition = container.style.position;
+      container.style.position = "relative";
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+function removeVisualReplacementLayer(container: Element): void {
+  container
+    .querySelectorAll("img[data-hanako-visual-replacement]")
+    .forEach((overlay) => overlay.remove());
+
+  if (
+    container instanceof HTMLElement &&
+    "hanakoOriginalPosition" in container.dataset
+  ) {
+    container.style.position = container.dataset.hanakoOriginalPosition ?? "";
+    delete container.dataset.hanakoOriginalPosition;
+  }
 }
 
 function getBackgroundImage(element: HTMLElement): string {

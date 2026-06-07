@@ -150,7 +150,7 @@ function PopupApp() {
   }
 
   function sendQueue() {
-    setStatus("Sending queue");
+    setStatus("Sending project");
     void chrome.runtime
       .sendMessage(createSendQueueMessage())
       .then((result: SendQueueResult) => {
@@ -163,24 +163,26 @@ function PopupApp() {
                 jobId: result.jobId
               })
           );
-          setStatus(`Queued ${result.imageCount ?? 0} pages in Hanako`);
+          setStatus(
+            `Submitted ${result.imageCount ?? 0} project pages to Hanako`
+          );
           setJobPhase("submitted");
           return;
         }
 
-        setStatus(result.error ?? "Queue send failed");
+        setStatus(result.error ?? "Project send failed");
       })
-      .catch(() => setStatus("Queue send failed"));
+      .catch(() => setStatus("Project send failed"));
   }
 
   function clearQueue() {
-    setStatus("Clearing queue");
+    setStatus("Clearing project");
     void chrome.runtime
       .sendMessage(createClearQueueMessage())
       .then((result: QueueStatusResult) => {
         setQueueCount(result.count ?? 0);
         setStatus(
-          result.ok ? "Queue cleared" : (result.error ?? "Clear failed")
+          result.ok ? "Project cleared" : (result.error ?? "Clear failed")
         );
       })
       .catch(() => setStatus("Clear failed"));
@@ -205,20 +207,20 @@ function PopupApp() {
       <h1>Hanako</h1>
       <p>{status}</p>
       {jobPhase ? <p>Current phase: {jobPhase}</p> : null}
-      <p>Queued pages: {queueCount}</p>
+      <p>Project pages: {queueCount}</p>
       <button
         disabled={queueCount <= 0}
         type="button"
         onClick={() => sendQueue()}
       >
-        Finalize Queue
+        Finalize Project
       </button>
       <button
         disabled={queueCount <= 0}
         type="button"
         onClick={() => clearQueue()}
       >
-        Clear queue
+        Clear project
       </button>
       <button type="button" onClick={() => clearTranslations()}>
         Clear translations
@@ -254,8 +256,9 @@ function PopupApp() {
 
 function isTransientSuccessStatus(status: string): boolean {
   return (
-    status === "Queue cleared" ||
-    status.startsWith("Queued ") ||
+    status === "Project cleared" ||
+    status.startsWith("Added ") ||
+    status.startsWith("Submitted ") ||
     status.startsWith("Restored ")
   );
 }

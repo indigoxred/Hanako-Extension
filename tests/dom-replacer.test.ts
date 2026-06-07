@@ -130,11 +130,60 @@ describe("content DOM replacer", () => {
     expect(visualLayer?.style.backgroundImage).toContain(
       "http://hanako.test/rendered.png"
     );
+    expect(
+      documentRef
+        .querySelector<HTMLImageElement>("[data-hanako-visual-replacement]")
+        ?.getAttribute("src")
+    ).toBe("http://hanako.test/rendered.png");
 
     expect(clearDetectedImageReplacements(documentRef)).toEqual({
       restored: 1
     });
     expect(visualLayer?.style.backgroundImage).toContain("HKHoz35aAAEUr8K");
+    expect(
+      documentRef.querySelector("[data-hanako-visual-replacement]")
+    ).toBeNull();
+  });
+
+  it("keeps an explicit visual replacement layer on X-style media containers", () => {
+    const documentRef = document.implementation.createHTMLDocument();
+    documentRef.body.innerHTML = `
+      <div aria-label="Image" style="position: relative;">
+        <div
+          data-testid="x-visual-layer"
+          style='background-image: url("https://pbs.twimg.com/media/original.jpg"); opacity: 0;'
+        ></div>
+        <img
+          alt="Image"
+          data-hanako-dom-id="hanako-context-img-0"
+          src="https://pbs.twimg.com/media/original.jpg"
+          style="opacity: 0;"
+        />
+      </div>
+    `;
+
+    replaceDetectedImages(
+      [
+        {
+          domId: "hanako-context-img-0",
+          renderedUrl: "http://hanako.test/rendered.png",
+          sourceUrl: "https://pbs.twimg.com/media/original.jpg"
+        }
+      ],
+      documentRef
+    );
+
+    const overlay = documentRef.querySelector<HTMLImageElement>(
+      "[data-hanako-visual-replacement]"
+    );
+
+    expect(overlay).toBeTruthy();
+    expect(overlay?.getAttribute("src")).toBe(
+      "http://hanako.test/rendered.png"
+    );
+    expect(overlay?.style.position).toBe("absolute");
+    expect(overlay?.style.opacity).toBe("1");
+    expect(overlay?.style.visibility).toBe("visible");
   });
 
   it("reapplies stored replacements when reader pages recycle image nodes", () => {

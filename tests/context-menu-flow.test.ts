@@ -1,11 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  captureContextImageBytes,
   translateContextMenuImage,
   type ContextImageBytesPayload
 } from "../src/background/context-menu-flow.js";
 
 describe("context menu translation flow", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("prefers bytes captured from the clicked page image before fetching the URL", async () => {
     let fetchCalls = 0;
     const result = await translateContextMenuImage({
@@ -187,13 +192,18 @@ describe("context menu translation flow", () => {
     ]);
   });
 
-  it("fails before contacting Hanako when the clicked image bytes cannot be extracted", async () => {
+  it("fails before contacting Hanako or fetching the URL when clicked image bytes cannot be extracted", async () => {
+    let fetchCalls = 0;
     const result = await translateContextMenuImage({
+      captureImageBytes: async () => undefined,
       context: {
         srcUrl: "https://pbs.twimg.com/media/HJ4cDDWbgAALVyK?format=jpg",
         tabId: 12
       },
-      fetchImageBytes: async () => undefined,
+      fetchImageBytes: async () => {
+        fetchCalls += 1;
+        throw new Error("Context actions must use page-extracted image bytes");
+      },
       loadSettings: async () => ({
         hanakoBaseUrl: "http://localhost:8787",
         targetLanguage: "en"
@@ -212,6 +222,34 @@ describe("context menu translation flow", () => {
     expect(result).toEqual({
       error: "The extension could not extract bytes for this image",
       ok: false
+    });
+    expect(fetchCalls).toBe(0);
+  });
+
+  it("does not fall back to visible viewport screenshots for context captures", async () => {
+    const sendMessage = vi.fn().mockResolvedValue({
+      error: "The clicked image could not be captured from the page",
+      ok: false
+    });
+    const executeScript = vi.fn().mockResolvedValue([]);
+    vi.stubGlobal("chrome", {
+      scripting: { executeScript },
+      tabs: { sendMessage }
+    });
+
+    await expect(
+      captureContextImageBytes({
+        sourceUrl: "https://pbs.twimg.com/media/HJ4cDDWbgAALVyK?format=jpg",
+        tabId: 12,
+        windowId: 9
+      })
+    ).resolves.toBeUndefined();
+
+    expect(executeScript).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(12, {
+      sourceUrl: "https://pbs.twimg.com/media/HJ4cDDWbgAALVyK?format=jpg",
+      type: "HANAKO_CAPTURE_IMAGE_BYTES"
     });
   });
 });

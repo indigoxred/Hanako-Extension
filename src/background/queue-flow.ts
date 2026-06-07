@@ -101,7 +101,7 @@ export async function sendQueuedImages({
   const queued = await listQueuedImages(storage);
 
   if (queued.length === 0) {
-    return { error: "Hanako queue is empty", ok: false };
+    return { error: "Hanako project is empty", ok: false };
   }
 
   const settings = await loadSettings();

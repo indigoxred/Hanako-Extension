@@ -10,7 +10,7 @@ import {
 } from "../src/background/context-menu.js";
 
 describe("context menus", () => {
-  it("creates translate, queue, and send queue image menu items", () => {
+  it("creates translate, project add, and project finalization menu items", () => {
     const created: unknown[] = [];
     createContextMenu({
       contextMenus: {
@@ -29,13 +29,13 @@ describe("context menus", () => {
       {
         contexts: ["image"],
         id: QUEUE_IMAGE_MENU_ID,
-        title: "Add to Queue"
+        title: "Add to Project"
       },
       {
         contexts: ["image"],
         enabled: false,
         id: SEND_QUEUE_MENU_ID,
-        title: "Finalize Queue"
+        title: "Finalize Project"
       }
     ]);
   });
@@ -62,7 +62,7 @@ describe("context menus", () => {
     ]);
   });
 
-  it("updates the queue menu title with the current count", async () => {
+  it("updates the project menu title with the current count", async () => {
     const updates: unknown[] = [];
     await updateQueueMenuTitle(
       {
@@ -76,7 +76,7 @@ describe("context menus", () => {
     );
 
     expect(updates).toEqual([
-      [QUEUE_IMAGE_MENU_ID, { title: "Add to Queue (2)" }],
+      [QUEUE_IMAGE_MENU_ID, { title: "Add to Project (2)" }],
       [SEND_QUEUE_MENU_ID, { enabled: true }]
     ]);
   });

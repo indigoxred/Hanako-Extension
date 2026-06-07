@@ -161,8 +161,8 @@ describe("job manager", () => {
     expect(states).toEqual([
       {
         state: {
-          message: "Finalizing queue",
-          phase: "finalizing-queue",
+          message: "Finalizing project",
+          phase: "finalizing-project",
           status: "running"
         },
         tabId: 7
@@ -170,7 +170,7 @@ describe("job manager", () => {
       {
         state: {
           jobId: "job_queue",
-          message: "Submitted 2 queued pages to Hanako",
+          message: "Submitted 2 project pages to Hanako",
           phase: "submitted",
           status: "submitted"
         },

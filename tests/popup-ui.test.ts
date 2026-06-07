@@ -31,4 +31,13 @@ describe("popup UI", () => {
     expect(source).toContain("SUCCESS_STATUS_RESET_MS");
     expect(source).toContain('setStatus("Ready")');
   });
+
+  it("uses project wording for the extension batch feature", async () => {
+    const source = await readFile(resolve("src/popup/Popup.tsx"), "utf8");
+
+    expect(source).toContain("Project pages:");
+    expect(source).toContain("Finalize Project");
+    expect(source).toContain("Clear project");
+    expect(source).not.toContain("Finalize Queue");
+  });
 });

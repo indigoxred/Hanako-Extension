@@ -104,7 +104,10 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
           ((input) => defaultQueueContextMenuImage(input))
         )({ context });
       } catch (error) {
-        result = { error: errorMessage(error, "Queue add failed"), ok: false };
+        result = {
+          error: errorMessage(error, "Project add failed"),
+          ok: false
+        };
       }
 
       if (result.ok) {
@@ -112,7 +115,9 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
           updateQueueBadge(result.count),
           updateQueueMenuTitle(result.count),
           setContextTabJobState(context, {
-            message: `Queued ${result.count} page${result.count === 1 ? "" : "s"} for Hanako`,
+            message: `Added ${result.count} page${
+              result.count === 1 ? "" : "s"
+            } to project`,
             status: "queued"
           })
         ]);
@@ -130,8 +135,8 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
       dedupe("send-queue", async () => {
         await setActionStatus("running");
         await setContextTabJobState(context, {
-          message: "Finalizing queue",
-          phase: "finalizing-queue",
+          message: "Finalizing project",
+          phase: "finalizing-project",
           status: "running"
         });
         let result: SendQueueResult;
@@ -144,7 +149,7 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
             : await defaultSendQueuedImages();
         } catch (error) {
           result = {
-            error: errorMessage(error, "Queue send failed"),
+            error: errorMessage(error, "Project send failed"),
             ok: false
           };
         }
@@ -155,7 +160,7 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
             updateQueueMenuTitle(0),
             setContextTabJobState(context, {
               jobId: result.jobId,
-              message: `Submitted ${result.imageCount} queued page${
+              message: `Submitted ${result.imageCount} project page${
                 result.imageCount === 1 ? "" : "s"
               } to Hanako`,
               phase: "submitted",

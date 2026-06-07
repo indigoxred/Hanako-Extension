@@ -34,7 +34,7 @@ export async function addQueuedImage(
   const items = await listQueuedImages(storage);
 
   if (items.length >= MAX_QUEUE_ITEMS) {
-    throw new Error(`Hanako queue is limited to ${MAX_QUEUE_ITEMS} images`);
+    throw new Error(`Hanako project is limited to ${MAX_QUEUE_ITEMS} images`);
   }
 
   const item: QueuedImage = {
@@ -45,7 +45,7 @@ export async function addQueuedImage(
   const next = [...items, item];
 
   if (estimateQueueBytes(next) > MAX_QUEUE_BYTES) {
-    throw new Error("Hanako queue is too large; send or clear it first");
+    throw new Error("Hanako project is too large; send or clear it first");
   }
 
   await storage.set({ [QUEUE_STORAGE_KEY]: next });
