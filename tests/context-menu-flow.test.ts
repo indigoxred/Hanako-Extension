@@ -192,38 +192,62 @@ describe("context menu translation flow", () => {
     ]);
   });
 
-  it("fails before contacting Hanako or fetching the URL when clicked image bytes cannot be extracted", async () => {
-    let fetchCalls = 0;
+  it("falls back to background source fetch when clicked image canvas extraction fails", async () => {
+    const fetchedImages: unknown[] = [];
+    const translatedImages: unknown[] = [];
     const result = await translateContextMenuImage({
       captureImageBytes: async () => undefined,
       context: {
+        pageUrl: "https://x.com/WwQel/status/2063186089964408919/photo/1",
         srcUrl: "https://pbs.twimg.com/media/HJ4cDDWbgAALVyK?format=jpg",
         tabId: 12
       },
-      fetchImageBytes: async () => {
-        fetchCalls += 1;
-        throw new Error("Context actions must use page-extracted image bytes");
+      fetchImageBytes: async (image) => {
+        fetchedImages.push(image);
+        return {
+          bytesBase64: "ZnVsbC1zb3VyY2UtaW1hZ2U=",
+          mediaType: "image/jpeg",
+          name: "HJ4cDDWbgAALVyK"
+        };
       },
       loadSettings: async () => ({
         hanakoBaseUrl: "http://localhost:8787",
         targetLanguage: "en"
       }),
-      replaceImage: async () => {
-        throw new Error("Should not replace an image before a job exists");
+      replaceImage: async () => ({ ok: true, replaced: 1 }),
+      translateImage: async (input) => {
+        translatedImages.push(input.image);
+        return { job: { id: "job_1" } };
       },
-      translateImage: async () => {
-        throw new Error("Should not contact Hanako without image bytes");
-      },
-      waitForJobCompletion: async () => {
-        throw new Error("Should not poll without a job");
-      }
+      waitForJobCompletion: async () => ({
+        detail: {
+          job: { id: "job_1", status: "completed" },
+          pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+        },
+        status: "completed"
+      })
     });
 
-    expect(result).toEqual({
-      error: "The extension could not extract bytes for this image",
-      ok: false
+    expect(fetchedImages).toEqual([
+      {
+        pageUrl: "https://x.com/WwQel/status/2063186089964408919/photo/1",
+        url: "https://pbs.twimg.com/media/HJ4cDDWbgAALVyK?format=jpg"
+      }
+    ]);
+    expect(translatedImages).toEqual([
+      {
+        bytesBase64: "ZnVsbC1zb3VyY2UtaW1hZ2U=",
+        mediaType: "image/jpeg",
+        name: "HJ4cDDWbgAALVyK",
+        pageUrl: "https://x.com/WwQel/status/2063186089964408919/photo/1",
+        url: "https://pbs.twimg.com/media/HJ4cDDWbgAALVyK?format=jpg"
+      }
+    ]);
+    expect(result).toMatchObject({
+      jobId: "job_1",
+      ok: true,
+      status: "completed"
     });
-    expect(fetchCalls).toBe(0);
   });
 
   it("does not fall back to visible viewport screenshots for context captures", async () => {

@@ -17,7 +17,11 @@ import {
 } from "./queue-state.js";
 import { loadExtensionSettings } from "../options/extension-settings.js";
 
-import type { ImageBytesPayload } from "./image-bytes.js";
+import {
+  withRequiredImageBytes,
+  type FetchImageBytes,
+  type ImageBytesPayload
+} from "./image-bytes.js";
 import type { ExtensionSettings } from "../options/extension-settings.js";
 
 export type QueueImageResult =
@@ -39,6 +43,7 @@ export interface QueueContextMenuImageInput {
     input: CaptureContextImageInput
   ) => Promise<ImageBytesPayload | undefined>;
   context: ContextMenuImageContext;
+  fetchImageBytes?: FetchImageBytes;
   loadSettings?: () => Promise<ExtensionSettings>;
   storage?: QueueStorageArea;
 }
@@ -52,6 +57,7 @@ export interface SendQueuedImagesInput {
 export async function queueContextMenuImage({
   captureImageBytes = captureContextImageBytes,
   context,
+  fetchImageBytes,
   loadSettings = loadExtensionSettings,
   storage
 }: QueueContextMenuImageInput): Promise<QueueImageResult> {
@@ -70,7 +76,16 @@ export async function queueContextMenuImage({
     ...(context.windowId === undefined ? {} : { windowId: context.windowId })
   }).catch(() => undefined);
 
-  if (!captured?.bytesBase64 || !captured.mediaType) {
+  const image = await withRequiredImageBytes(
+    {
+      ...(context.pageUrl ? { pageUrl: context.pageUrl } : {}),
+      url: context.srcUrl,
+      ...(captured ?? {})
+    },
+    fetchImageBytes
+  ).catch(() => undefined);
+
+  if (!image?.bytesBase64 || !image.mediaType) {
     return {
       error: "The extension could not extract bytes for this image",
       ok: false
@@ -80,14 +95,19 @@ export async function queueContextMenuImage({
   const settings = await loadSettings();
   const cacheKey = await createTranslationCacheKey({
     baseUrl: settings.hanakoBaseUrl,
-    bytesBase64: captured.bytesBase64,
+    bytesBase64: image.bytesBase64,
     targetLanguage: settings.targetLanguage
   });
   const queued = await addQueuedImage(storage, {
-    ...captured,
+    bytesBase64: image.bytesBase64,
     cacheKey,
+    ...(image.domId ? { domId: image.domId } : {}),
+    ...(image.domIndex === undefined ? {} : { domIndex: image.domIndex }),
+    ...(image.height === undefined ? {} : { height: image.height }),
+    mediaType: image.mediaType,
     ...(context.pageUrl ? { pageUrl: context.pageUrl } : {}),
-    sourceUrl: context.srcUrl
+    sourceUrl: context.srcUrl,
+    ...(image.width === undefined ? {} : { width: image.width })
   });
 
   return { count: queued.count, ok: true };

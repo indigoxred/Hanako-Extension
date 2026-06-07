@@ -9,7 +9,11 @@ import {
   type ExtensionJobDetail,
   type TranslateImageInput
 } from "./hanako-client.js";
-import type { FetchImageBytes, ImageBytesPayload } from "./image-bytes.js";
+import {
+  withRequiredImageBytes,
+  type FetchImageBytes,
+  type ImageBytesPayload
+} from "./image-bytes.js";
 import {
   createRenderedPageUrl,
   waitForJobCompletion as defaultWaitForJobCompletion,
@@ -92,6 +96,7 @@ export interface TranslateContextMenuImageDependencies {
 export async function translateContextMenuImage({
   captureImageBytes = captureContextImageBytes,
   context,
+  fetchImageBytes,
   loadSettings = loadExtensionSettings,
   onPhase,
   replaceImage = defaultReplaceImage,
@@ -120,7 +125,18 @@ export async function translateContextMenuImage({
     ...(context.windowId === undefined ? {} : { windowId: context.windowId })
   }).catch(() => undefined);
 
-  if (!captured?.bytesBase64 || !captured.mediaType) {
+  const image = await withRequiredImageBytes(
+    {
+      ...compactImageCandidate({
+        pageUrl: context.pageUrl,
+        url: context.srcUrl
+      }),
+      ...(captured ?? {})
+    },
+    fetchImageBytes
+  ).catch(() => undefined);
+
+  if (!image?.bytesBase64 || !image.mediaType) {
     await emitPhase(onPhase, {
       message: "The extension could not extract bytes for this image",
       phase: "failed"
@@ -130,14 +146,6 @@ export async function translateContextMenuImage({
       ok: false
     };
   }
-
-  const image: ExtensionImageCandidate = {
-    ...compactImageCandidate({
-      pageUrl: context.pageUrl,
-      url: context.srcUrl
-    }),
-    ...captured
-  };
 
   await emitPhase(onPhase, {
     message: "Submitting image to Hanako",

@@ -34,6 +34,40 @@ describe("queue flow", () => {
     expect(result).toMatchObject({ count: 1, ok: true });
   });
 
+  it("falls back to background source fetch when queue image canvas extraction fails", async () => {
+    const storage = createMemoryStorage();
+    const fetchedImages: unknown[] = [];
+    const result = await queueContextMenuImage({
+      captureImageBytes: async () => undefined,
+      context: {
+        pageUrl: "https://x.com/WwQel/status/2063186089964408919/photo/1",
+        srcUrl: "https://pbs.twimg.com/media/HJ4cDDWbgAALVyK?format=jpg",
+        tabId: 5
+      },
+      fetchImageBytes: async (image) => {
+        fetchedImages.push(image);
+        return {
+          bytesBase64: "full-image",
+          mediaType: "image/jpeg"
+        };
+      },
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      storage
+    });
+
+    expect(result).toMatchObject({ count: 1, ok: true });
+    expect(fetchedImages).toEqual([
+      {
+        pageUrl: "https://x.com/WwQel/status/2063186089964408919/photo/1",
+        url: "https://pbs.twimg.com/media/HJ4cDDWbgAALVyK?format=jpg"
+      }
+    ]);
+    expect(await getQueuedImageCount(storage)).toBe(1);
+  });
+
   it("sends queued images as one Hanako page project and clears queue on success", async () => {
     const storage = createMemoryStorage();
     await queueContextMenuImage({

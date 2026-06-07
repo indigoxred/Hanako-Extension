@@ -21,7 +21,8 @@ export async function fetchImageBytes(
 
   const response = await fetcher(image.url, {
     credentials: "omit",
-    redirect: "follow"
+    redirect: "follow",
+    ...referrerInitFor(image.pageUrl)
   });
 
   if (!response.ok) {
@@ -93,6 +94,19 @@ function isHttpUrl(rawUrl: string): boolean {
   } catch {
     return false;
   }
+}
+
+function referrerInitFor(
+  pageUrl: string | undefined
+): Pick<RequestInit, "referrer" | "referrerPolicy"> {
+  if (!pageUrl || !isHttpUrl(pageUrl)) {
+    return {};
+  }
+
+  return {
+    referrer: pageUrl,
+    referrerPolicy: "no-referrer-when-downgrade"
+  };
 }
 
 function nameFromUrl(rawUrl: string): string | undefined {

@@ -32,6 +32,28 @@ describe("image byte extraction", () => {
     });
   });
 
+  it("passes page URL as referrer context for background image fetches", async () => {
+    await fetchImageBytes(
+      {
+        pageUrl: "https://x.com/WwQel/status/2063186089964408919/photo/1",
+        url: "https://pbs.twimg.com/media/HJ4cDDWbgAALVyK?format=jpg"
+      },
+      async (_input, init) => {
+        expect(init).toMatchObject({
+          credentials: "omit",
+          redirect: "follow",
+          referrer: "https://x.com/WwQel/status/2063186089964408919/photo/1",
+          referrerPolicy: "no-referrer-when-downgrade"
+        });
+
+        return new Response(new Uint8Array([1, 2, 3]), {
+          headers: { "content-type": "image/jpeg" },
+          status: 200
+        });
+      }
+    );
+  });
+
   it("requires image bytes before the extension sends a translation job", async () => {
     await expect(
       withRequiredImageBytes(
