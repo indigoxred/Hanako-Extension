@@ -13,6 +13,7 @@ export interface LocatedImageElementRect {
   fullyVisible?: boolean;
   height: number;
   left: number;
+  scrollChanged?: boolean;
   top: number;
   viewportHeight: number;
   viewportWidth: number;
@@ -82,6 +83,8 @@ export async function scrollImageElementIntoViewBySource(
     return undefined;
   }
 
+  const beforeRect = image.getBoundingClientRect();
+  const beforeScroll = getViewportScroll(documentRef);
   image.scrollIntoView?.({
     behavior: "auto",
     block: "center",
@@ -100,6 +103,9 @@ export async function scrollImageElementIntoViewBySource(
   return {
     ...located,
     fullyVisible,
+    scrollChanged:
+      hasRectMoved(beforeRect, located) ||
+      hasViewportScrollChanged(beforeScroll, documentRef),
     ...(fullyVisible ? {} : { warning: PARTIAL_SCREENSHOT_WARNING })
   };
 }
@@ -115,6 +121,37 @@ async function waitForScrollToSettle(documentRef: Document): Promise<void> {
 
   await new Promise<void>((resolve) => requestFrame(() => resolve()));
   await new Promise<void>((resolve) => requestFrame(() => resolve()));
+}
+
+function getViewportScroll(documentRef: Document): {
+  scrollX: number;
+  scrollY: number;
+} {
+  const view = documentRef.defaultView ?? window;
+
+  return {
+    scrollX: view.scrollX,
+    scrollY: view.scrollY
+  };
+}
+
+function hasViewportScrollChanged(
+  before: { scrollX: number; scrollY: number },
+  documentRef: Document
+): boolean {
+  const after = getViewportScroll(documentRef);
+
+  return after.scrollX !== before.scrollX || after.scrollY !== before.scrollY;
+}
+
+function hasRectMoved(
+  before: Pick<DOMRect, "left" | "top">,
+  after: Pick<LocatedImageElementRect, "left" | "top">
+): boolean {
+  return (
+    Math.round(before.left) !== Math.round(after.left) ||
+    Math.round(before.top) !== Math.round(after.top)
+  );
 }
 
 export async function captureImageBitmapFromElement(

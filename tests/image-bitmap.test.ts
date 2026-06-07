@@ -283,8 +283,15 @@ describe("content image bitmap capture", () => {
 
     expect(result).toMatchObject({
       fullyVisible: true,
+      scrollChanged: true,
       top: 20
     });
-    expect(calls).toEqual(["scroll", "raf", "raf", "rect:settled"]);
+    expect(calls).toEqual([
+      "rect:initial",
+      "scroll",
+      "raf",
+      "raf",
+      "rect:settled"
+    ]);
   });
 });

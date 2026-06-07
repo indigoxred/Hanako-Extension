@@ -473,6 +473,70 @@ describe("context menu translation flow", () => {
     });
   });
 
+  it("captures a pre-scroll snapshot and passes it as stale when the scroll moved the image", async () => {
+    const calls: string[] = [];
+    const executeScript = vi.fn().mockResolvedValue([]);
+    const sendMessage = vi.fn().mockImplementation(async (_tabId, message) => {
+      calls.push(`message:${message.type}`);
+      return {
+        ok: true,
+        rect: {
+          domId: "hanako-context-img-3",
+          domIndex: 3,
+          height: 120,
+          left: 10,
+          scrollChanged: true,
+          top: 20,
+          viewportHeight: 800,
+          viewportWidth: 1000,
+          width: 200
+        }
+      };
+    });
+    vi.stubGlobal("chrome", {
+      scripting: { executeScript },
+      tabs: { sendMessage }
+    });
+
+    await expect(
+      captureVisibleContextImageBytes(
+        {
+          sourceUrl: "https://manga.example/page.png",
+          tabId: 12,
+          windowId: 9
+        },
+        {
+          captureVisibleElementBitmap: async (input) => {
+            calls.push("crop");
+            expect(input).toMatchObject({
+              staleDataUrl: "data:image/png;base64,cHJlLXNjcm9sbA==",
+              windowId: 9
+            });
+            return {
+              bytesBase64: "dmlzaWJsZS1pbWFnZQ==",
+              mediaType: "image/png",
+              name: "page.png"
+            };
+          },
+          captureVisibleTabSnapshot: async (windowId) => {
+            calls.push(`snapshot:${windowId}`);
+            return "data:image/png;base64,cHJlLXNjcm9sbA==";
+          }
+        }
+      )
+    ).resolves.toMatchObject({
+      bytesBase64: "dmlzaWJsZS1pbWFnZQ==",
+      domId: "hanako-context-img-3",
+      domIndex: 3
+    });
+
+    expect(calls).toEqual([
+      "snapshot:9",
+      "message:HANAKO_SCROLL_IMAGE_INTO_VIEW",
+      "crop"
+    ]);
+  });
+
   it("scrolls the image into view before visible screenshot fallback and warns if it remains partial", async () => {
     const executeScript = vi.fn().mockResolvedValue([]);
     const sendMessage = vi.fn().mockImplementation(async (_tabId, message) => {

@@ -16,6 +16,8 @@ import {
 } from "./image-bytes.js";
 import {
   captureVisibleElementBitmap as defaultCaptureVisibleElementBitmap,
+  captureVisibleTabSnapshot as defaultCaptureVisibleTabSnapshot,
+  type VisibleElementCaptureInput,
   type VisibleElementRect
 } from "./visible-tab-capture.js";
 import {
@@ -359,6 +361,11 @@ export async function captureVisibleContextImageBytes(
     target: { tabId: input.tabId }
   });
 
+  const captureVisibleTabSnapshot =
+    dependencies.captureVisibleTabSnapshot ?? defaultCaptureVisibleTabSnapshot;
+  const staleDataUrl = await captureVisibleTabSnapshot(input.windowId).catch(
+    () => undefined
+  );
   const scrolled = (await chrome.tabs.sendMessage(input.tabId, {
     sourceUrl: input.sourceUrl,
     type: "HANAKO_SCROLL_IMAGE_INTO_VIEW"
@@ -380,6 +387,7 @@ export async function captureVisibleContextImageBytes(
   const captured = await captureVisibleElementBitmap({
     rect: located.rect,
     sourceUrl: input.sourceUrl,
+    ...(located.rect.scrollChanged && staleDataUrl ? { staleDataUrl } : {}),
     ...(input.windowId === undefined ? {} : { windowId: input.windowId })
   });
 
@@ -438,11 +446,12 @@ function isCaptureImageBytesResponse(response: unknown): response is {
 }
 
 interface VisibleContextImageCaptureDependencies {
-  captureVisibleElementBitmap?: (input: {
-    rect: VisibleElementRect;
-    sourceUrl: string;
-    windowId?: number;
-  }) => Promise<ImageBytesPayload | undefined>;
+  captureVisibleElementBitmap?: (
+    input: VisibleElementCaptureInput
+  ) => Promise<ImageBytesPayload | undefined>;
+  captureVisibleTabSnapshot?: (
+    windowId?: number
+  ) => Promise<string | undefined>;
 }
 
 function isLocatedImageElementResponse(response: unknown): response is {
@@ -451,6 +460,7 @@ function isLocatedImageElementResponse(response: unknown): response is {
     domIndex: number;
     domId: string;
     fullyVisible?: boolean;
+    scrollChanged?: boolean;
     warning?: string;
   };
 } {
