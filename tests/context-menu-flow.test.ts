@@ -404,13 +404,14 @@ describe("context menu translation flow", () => {
     });
   });
 
-  it("scrolls the clicked image before using the visible screenshot fallback", async () => {
+  it("uses the current visible screenshot without scrolling when the image is already fully visible", async () => {
     const executeScript = vi.fn().mockResolvedValue([]);
     const sendMessage = vi.fn().mockResolvedValue({
       ok: true,
       rect: {
         domId: "hanako-context-img-3",
         domIndex: 3,
+        fullyVisible: true,
         height: 120,
         left: 10,
         top: 20,
@@ -437,6 +438,7 @@ describe("context menu translation flow", () => {
               rect: {
                 domId: "hanako-context-img-3",
                 domIndex: 3,
+                fullyVisible: true,
                 height: 120,
                 left: 10,
                 top: 20,
@@ -469,23 +471,44 @@ describe("context menu translation flow", () => {
     });
     expect(sendMessage).toHaveBeenCalledWith(12, {
       sourceUrl: "https://manga.example/page.png",
+      type: "HANAKO_LOCATE_IMAGE_ELEMENT"
+    });
+    expect(sendMessage).not.toHaveBeenCalledWith(12, {
+      sourceUrl: "https://manga.example/page.png",
       type: "HANAKO_SCROLL_IMAGE_INTO_VIEW"
     });
   });
 
-  it("captures a pre-scroll snapshot and passes it as stale when the scroll moved the image", async () => {
+  it("captures before scroll, waits 0.5s, and crops the changed post-scroll screenshot when the image is not fully visible", async () => {
     const calls: string[] = [];
     const executeScript = vi.fn().mockResolvedValue([]);
     const sendMessage = vi.fn().mockImplementation(async (_tabId, message) => {
       calls.push(`message:${message.type}`);
+      if (message.type === "HANAKO_LOCATE_IMAGE_ELEMENT") {
+        return {
+          ok: true,
+          rect: {
+            domId: "hanako-context-img-3",
+            domIndex: 3,
+            fullyVisible: false,
+            height: 1200,
+            left: 10,
+            top: 900,
+            viewportHeight: 800,
+            viewportWidth: 1000,
+            width: 200
+          }
+        };
+      }
+
       return {
         ok: true,
         rect: {
           domId: "hanako-context-img-3",
           domIndex: 3,
+          fullyVisible: true,
           height: 120,
           left: 10,
-          scrollChanged: true,
           top: 20,
           viewportHeight: 800,
           viewportWidth: 1000,
@@ -509,7 +532,7 @@ describe("context menu translation flow", () => {
           captureVisibleElementBitmap: async (input) => {
             calls.push("crop");
             expect(input).toMatchObject({
-              staleDataUrl: "data:image/png;base64,cHJlLXNjcm9sbA==",
+              dataUrl: "data:image/png;base64,cG9zdC1zY3JvbGw=",
               windowId: 9
             });
             return {
@@ -520,7 +543,13 @@ describe("context menu translation flow", () => {
           },
           captureVisibleTabSnapshot: async (windowId) => {
             calls.push(`snapshot:${windowId}`);
-            return "data:image/png;base64,cHJlLXNjcm9sbA==";
+            return calls.filter((call) => call.startsWith("snapshot:"))
+              .length === 1
+              ? "data:image/png;base64,cHJlLXNjcm9sbA=="
+              : "data:image/png;base64,cG9zdC1zY3JvbGw=";
+          },
+          waitForPostScrollScreenshot: async () => {
+            calls.push("wait:500");
           }
         }
       )
@@ -531,17 +560,94 @@ describe("context menu translation flow", () => {
     });
 
     expect(calls).toEqual([
+      "message:HANAKO_LOCATE_IMAGE_ELEMENT",
       "snapshot:9",
       "message:HANAKO_SCROLL_IMAGE_INTO_VIEW",
+      "wait:500",
+      "snapshot:9",
       "crop"
     ]);
+  });
+
+  it("throws when an out-of-frame scroll produces the same before and after screenshot", async () => {
+    const executeScript = vi.fn().mockResolvedValue([]);
+    const sendMessage = vi.fn().mockImplementation(async (_tabId, message) => {
+      if (message.type === "HANAKO_LOCATE_IMAGE_ELEMENT") {
+        return {
+          ok: true,
+          rect: {
+            domId: "hanako-context-img-3",
+            domIndex: 3,
+            fullyVisible: false,
+            height: 1200,
+            left: 10,
+            top: 900,
+            viewportHeight: 800,
+            viewportWidth: 1000,
+            width: 200
+          }
+        };
+      }
+
+      return {
+        ok: true,
+        rect: {
+          domId: "hanako-context-img-3",
+          domIndex: 3,
+          fullyVisible: true,
+          height: 120,
+          left: 10,
+          top: 20,
+          viewportHeight: 800,
+          viewportWidth: 1000,
+          width: 200
+        }
+      };
+    });
+    vi.stubGlobal("chrome", {
+      scripting: { executeScript },
+      tabs: { sendMessage }
+    });
+
+    await expect(
+      captureVisibleContextImageBytes(
+        {
+          sourceUrl: "https://manga.example/page.png",
+          tabId: 12,
+          windowId: 9
+        },
+        {
+          captureVisibleElementBitmap: async () => {
+            throw new Error("The stale screenshot should not be cropped");
+          },
+          captureVisibleTabSnapshot: async () =>
+            "data:image/png;base64,cHJlLXNjcm9sbA==",
+          waitForPostScrollScreenshot: async () => undefined
+        }
+      )
+    ).rejects.toThrow(
+      "The visible tab screenshot did not change after scrolling the image into view"
+    );
   });
 
   it("scrolls the image into view before visible screenshot fallback and warns if it remains partial", async () => {
     const executeScript = vi.fn().mockResolvedValue([]);
     const sendMessage = vi.fn().mockImplementation(async (_tabId, message) => {
-      if (message.type !== "HANAKO_SCROLL_IMAGE_INTO_VIEW") {
-        throw new Error(`Unexpected message ${message.type}`);
+      if (message.type === "HANAKO_LOCATE_IMAGE_ELEMENT") {
+        return {
+          ok: true,
+          rect: {
+            domId: "hanako-context-img-3",
+            domIndex: 3,
+            fullyVisible: false,
+            height: 1200,
+            left: 0,
+            top: 900,
+            viewportHeight: 800,
+            viewportWidth: 1000,
+            width: 700
+          }
+        };
       }
 
       return {
@@ -576,6 +682,7 @@ describe("context menu translation flow", () => {
         {
           captureVisibleElementBitmap: async (input) => {
             expect(input).toEqual({
+              dataUrl: "data:image/png;base64,cG9zdC1zY3JvbGw=",
               rect: {
                 domId: "hanako-context-img-3",
                 domIndex: 3,
@@ -597,7 +704,12 @@ describe("context menu translation flow", () => {
               mediaType: "image/png",
               name: "page.png"
             };
-          }
+          },
+          captureVisibleTabSnapshot: async () =>
+            sendMessage.mock.calls.length <= 1
+              ? "data:image/png;base64,cHJlLXNjcm9sbA=="
+              : "data:image/png;base64,cG9zdC1zY3JvbGw=",
+          waitForPostScrollScreenshot: async () => undefined
         }
       )
     ).resolves.toEqual({

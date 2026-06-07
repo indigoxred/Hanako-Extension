@@ -361,33 +361,64 @@ export async function captureVisibleContextImageBytes(
     target: { tabId: input.tabId }
   });
 
+  const locatedBeforeScroll = (await chrome.tabs.sendMessage(input.tabId, {
+    sourceUrl: input.sourceUrl,
+    type: "HANAKO_LOCATE_IMAGE_ELEMENT"
+  })) as unknown;
+
+  if (!isLocatedImageElementResponse(locatedBeforeScroll)) {
+    return undefined;
+  }
+
   const captureVisibleTabSnapshot =
     dependencies.captureVisibleTabSnapshot ?? defaultCaptureVisibleTabSnapshot;
-  const staleDataUrl = await captureVisibleTabSnapshot(input.windowId).catch(
-    () => undefined
-  );
-  const scrolled = (await chrome.tabs.sendMessage(input.tabId, {
-    sourceUrl: input.sourceUrl,
-    type: "HANAKO_SCROLL_IMAGE_INTO_VIEW"
-  })) as unknown;
-  const located = isLocatedImageElementResponse(scrolled)
-    ? scrolled
-    : ((await chrome.tabs.sendMessage(input.tabId, {
-        sourceUrl: input.sourceUrl,
-        type: "HANAKO_LOCATE_IMAGE_ELEMENT"
-      })) as unknown);
+  const waitForPostScrollScreenshot =
+    dependencies.waitForPostScrollScreenshot ??
+    defaultWaitForPostScrollScreenshot;
+  let dataUrl: string | undefined;
+  let located = locatedBeforeScroll;
 
-  if (!isLocatedImageElementResponse(located)) {
-    return undefined;
+  if (!isVisibleInFrame(locatedBeforeScroll.rect)) {
+    const beforeScrollDataUrl = await captureVisibleTabSnapshot(input.windowId);
+
+    if (!beforeScrollDataUrl) {
+      throw new Error(
+        "The visible tab screenshot could not be captured before scrolling the image into view"
+      );
+    }
+
+    const scrolled = (await chrome.tabs.sendMessage(input.tabId, {
+      sourceUrl: input.sourceUrl,
+      type: "HANAKO_SCROLL_IMAGE_INTO_VIEW"
+    })) as unknown;
+    located = isLocatedImageElementResponse(scrolled)
+      ? scrolled
+      : locatedBeforeScroll;
+    await waitForPostScrollScreenshot();
+    const afterScrollDataUrl = await captureVisibleTabSnapshot(input.windowId);
+
+    if (!afterScrollDataUrl) {
+      throw new Error(
+        "The visible tab screenshot could not be captured after scrolling the image into view"
+      );
+    }
+
+    if (afterScrollDataUrl === beforeScrollDataUrl) {
+      throw new Error(
+        "The visible tab screenshot did not change after scrolling the image into view"
+      );
+    }
+
+    dataUrl = afterScrollDataUrl;
   }
 
   const captureVisibleElementBitmap =
     dependencies.captureVisibleElementBitmap ??
     defaultCaptureVisibleElementBitmap;
   const captured = await captureVisibleElementBitmap({
+    ...(dataUrl ? { dataUrl } : {}),
     rect: located.rect,
     sourceUrl: input.sourceUrl,
-    ...(located.rect.scrollChanged && staleDataUrl ? { staleDataUrl } : {}),
     ...(input.windowId === undefined ? {} : { windowId: input.windowId })
   });
 
@@ -452,6 +483,7 @@ interface VisibleContextImageCaptureDependencies {
   captureVisibleTabSnapshot?: (
     windowId?: number
   ) => Promise<string | undefined>;
+  waitForPostScrollScreenshot?: () => Promise<void> | void;
 }
 
 function isLocatedImageElementResponse(response: unknown): response is {
@@ -493,6 +525,22 @@ function isNumberProperty(
     property in value &&
     typeof (value as Record<string, unknown>)[property] === "number"
   );
+}
+
+function isVisibleInFrame(
+  rect: VisibleElementRect & { fullyVisible?: boolean }
+) {
+  return (
+    rect.fullyVisible ??
+    (rect.left >= 0 &&
+      rect.top >= 0 &&
+      rect.left + rect.width <= rect.viewportWidth &&
+      rect.top + rect.height <= rect.viewportHeight)
+  );
+}
+
+function defaultWaitForPostScrollScreenshot(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 500));
 }
 
 function hasSupportedImageBytes(

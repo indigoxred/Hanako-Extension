@@ -63,6 +63,14 @@ export function locateImageElementBySource(
   return {
     domId: ensureContextDomId(image, found.domIndex),
     domIndex: found.domIndex,
+    fullyVisible: isFullyVisible({
+      height: rect.height,
+      left: rect.left,
+      top: rect.top,
+      viewportHeight: view.innerHeight,
+      viewportWidth: view.innerWidth,
+      width: rect.width
+    }),
     height: rect.height,
     left: rect.left,
     top: rect.top,
@@ -301,7 +309,12 @@ function nameFromImage(
   }
 }
 
-function isFullyVisible(rect: LocatedImageElementRect): boolean {
+function isFullyVisible(
+  rect: Pick<
+    LocatedImageElementRect,
+    "height" | "left" | "top" | "viewportHeight" | "viewportWidth" | "width"
+  >
+): boolean {
   return (
     rect.left >= 0 &&
     rect.top >= 0 &&

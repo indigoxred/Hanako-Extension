@@ -106,18 +106,14 @@ describe("visible tab image capture", () => {
     expect(drawCalls[0]?.slice(1)).toEqual([20, 40, 400, 240, 0, 0, 400, 240]);
   });
 
-  it("waits for a changed visible-tab screenshot before cropping after scroll", async () => {
-    const staleDataUrl = "data:image/png;base64,cHJlLXNjcm9sbA==";
-    const freshDataUrl = "data:image/png;base64,cG9zdC1zY3JvbGw=";
-    const captureVisibleTab = vi
-      .fn()
-      .mockResolvedValueOnce(staleDataUrl)
-      .mockResolvedValueOnce(freshDataUrl);
+  it("crops a provided visible-tab screenshot without capturing again", async () => {
+    const dataUrl = "data:image/png;base64,cG9zdC1zY3JvbGw=";
+    const captureVisibleTab = vi.fn();
     const fetchedDataUrls: string[] = [];
-    const retryWait = vi.fn();
 
     const result = await captureVisibleElementBitmap(
       {
+        dataUrl,
         rect: {
           height: 120,
           left: 10,
@@ -127,7 +123,6 @@ describe("visible tab image capture", () => {
           width: 200
         },
         sourceUrl: "https://manga.example/page-1.jpg",
-        staleDataUrl,
         windowId: 9
       },
       {
@@ -145,8 +140,7 @@ describe("visible tab image capture", () => {
         fetchDataUrl: async (dataUrl) => {
           fetchedDataUrls.push(String(dataUrl));
           return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
-        },
-        waitForFreshCaptureRetry: retryWait
+        }
       }
     );
 
@@ -154,8 +148,7 @@ describe("visible tab image capture", () => {
       bytesBase64: "BwgJ",
       mediaType: "image/png"
     });
-    expect(captureVisibleTab).toHaveBeenCalledTimes(2);
-    expect(retryWait).toHaveBeenCalledTimes(1);
-    expect(fetchedDataUrls).toEqual([freshDataUrl]);
+    expect(captureVisibleTab).not.toHaveBeenCalled();
+    expect(fetchedDataUrls).toEqual([dataUrl]);
   });
 });

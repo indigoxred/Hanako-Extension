@@ -34,9 +34,9 @@ interface CanvasLike {
 }
 
 export interface VisibleElementCaptureInput {
+  dataUrl?: string;
   rect: VisibleElementRect;
   sourceUrl: string;
-  staleDataUrl?: string;
   windowId?: number;
 }
 
@@ -45,8 +45,6 @@ interface VisibleElementCaptureDependencies {
   createCanvas?: (width: number, height: number) => CanvasLike;
   createImageBitmapFromBlob?: (blob: Blob) => Promise<BitmapLike>;
   fetchDataUrl?: typeof fetch;
-  maxFreshCaptureAttempts?: number;
-  waitForFreshCaptureRetry?: (attempt: number) => Promise<void> | void;
 }
 
 export async function captureVisibleElementBitmap(
@@ -59,13 +57,7 @@ export async function captureVisibleElementBitmap(
   const createImageBitmapFromBlob =
     dependencies.createImageBitmapFromBlob ?? createImageBitmap;
   const createCanvas = dependencies.createCanvas ?? defaultCreateCanvas;
-  const dataUrl = await captureFreshVisibleTab({
-    captureVisibleTab,
-    maxAttempts: dependencies.maxFreshCaptureAttempts,
-    staleDataUrl: input.staleDataUrl,
-    waitForFreshCaptureRetry: dependencies.waitForFreshCaptureRetry,
-    windowId: input.windowId
-  });
+  const dataUrl = input.dataUrl ?? (await captureVisibleTab(input.windowId));
 
   if (!dataUrl) {
     return undefined;
@@ -122,36 +114,6 @@ export async function captureVisibleElementBitmap(
   } catch {
     return undefined;
   }
-}
-
-async function captureFreshVisibleTab(input: {
-  captureVisibleTab: (windowId?: number) => Promise<string | undefined>;
-  maxAttempts?: number;
-  staleDataUrl?: string;
-  waitForFreshCaptureRetry?: (attempt: number) => Promise<void> | void;
-  windowId?: number;
-}): Promise<string | undefined> {
-  const maxAttempts = input.staleDataUrl ? (input.maxAttempts ?? 8) : 1;
-  const waitForFreshCaptureRetry =
-    input.waitForFreshCaptureRetry ?? defaultWaitForFreshCaptureRetry;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const dataUrl = await input.captureVisibleTab(input.windowId);
-
-    if (!dataUrl) {
-      return undefined;
-    }
-
-    if (!input.staleDataUrl || dataUrl !== input.staleDataUrl) {
-      return dataUrl;
-    }
-
-    if (attempt < maxAttempts) {
-      await waitForFreshCaptureRetry(attempt);
-    }
-  }
-
-  return undefined;
 }
 
 export function calculateVisibleCrop(input: {
@@ -224,10 +186,6 @@ export function captureVisibleTabSnapshot(
 
     chrome.tabs.captureVisibleTab(windowId, { format: "png" }, callback);
   });
-}
-
-function defaultWaitForFreshCaptureRetry(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 75));
 }
 
 function defaultCreateCanvas(width: number, height: number): CanvasLike {

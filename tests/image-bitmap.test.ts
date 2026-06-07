@@ -176,6 +176,7 @@ describe("content image bitmap capture", () => {
     ).toMatchObject({
       domId: "hanako-context-img-1",
       domIndex: 1,
+      fullyVisible: true,
       height: 400,
       left: 25,
       top: 60,
