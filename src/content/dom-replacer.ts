@@ -27,10 +27,11 @@ export function replaceDetectedImages(
       continue;
     }
 
-    if (isRenderedImageApplied(image, replacement.renderedUrl)) {
-      continue;
-    }
-
+    const sourceCandidates = getImageSourceCandidates(image, replacement);
+    const imageAlreadyApplied = isRenderedImageApplied(
+      image,
+      replacement.renderedUrl
+    );
     const currentSrc =
       image.currentSrc || image.src || image.getAttribute("src") || "";
     image.dataset.hanakoOriginalSrc =
@@ -38,10 +39,20 @@ export function replaceDetectedImages(
     image.dataset.hanakoOriginalSrcset =
       image.dataset.hanakoOriginalSrcset || image.getAttribute("srcset") || "";
     image.dataset.hanakoRenderedSrc = replacement.renderedUrl;
-    image.removeAttribute("srcset");
-    disablePictureSources(image);
-    image.src = replacement.renderedUrl;
-    replaced += 1;
+    const backgroundChanged = applyVisualBackgroundLayers(image, {
+      renderedUrl: replacement.renderedUrl,
+      sourceCandidates
+    });
+
+    if (!imageAlreadyApplied) {
+      image.removeAttribute("srcset");
+      disablePictureSources(image);
+      image.src = replacement.renderedUrl;
+    }
+
+    if (!imageAlreadyApplied || backgroundChanged) {
+      replaced += 1;
+    }
   }
 
   return { replaced };
@@ -67,14 +78,21 @@ function reapplyStoredReplacementTargets(
       continue;
     }
 
-    if (isRenderedImageApplied(image, renderedUrl)) {
-      continue;
+    const imageAlreadyApplied = isRenderedImageApplied(image, renderedUrl);
+    const backgroundChanged = applyVisualBackgroundLayers(image, {
+      renderedUrl,
+      sourceCandidates: getImageSourceCandidates(image)
+    });
+
+    if (!imageAlreadyApplied) {
+      image.removeAttribute("srcset");
+      disablePictureSources(image);
+      image.src = renderedUrl;
     }
 
-    image.removeAttribute("srcset");
-    disablePictureSources(image);
-    image.src = renderedUrl;
-    replaced += 1;
+    if (!imageAlreadyApplied || backgroundChanged) {
+      replaced += 1;
+    }
   }
 
   return { replaced };
@@ -89,6 +107,8 @@ export function clearDetectedImageReplacements(
     if (!image.dataset.hanakoRenderedSrc) {
       continue;
     }
+
+    restoreVisualBackgroundLayers(image);
 
     if (image.dataset.hanakoOriginalSrc) {
       image.src = image.dataset.hanakoOriginalSrc;
@@ -155,9 +175,9 @@ export function observeReplacementMutations(
     }
   });
   observer.observe(documentRef.body, {
-    attributeFilter: ["src", "srcset"],
     attributes: true,
     childList: true,
+    attributeFilter: ["src", "srcset", "style"],
     subtree: true
   });
   return observer;
@@ -179,6 +199,17 @@ function addReplacementImageTarget(
   for (const image of Array.from(node.querySelectorAll("img"))) {
     targets.add(image);
   }
+
+  const container = findVisualMediaContainer(node);
+  if (!container) {
+    return;
+  }
+
+  for (const image of Array.from(container.querySelectorAll("img"))) {
+    if (image.dataset.hanakoRenderedSrc) {
+      targets.add(image);
+    }
+  }
 }
 
 function isRenderedImageApplied(
@@ -188,6 +219,146 @@ function isRenderedImageApplied(
   return [image.getAttribute("src"), image.src, image.currentSrc].includes(
     renderedUrl
   );
+}
+
+function applyVisualBackgroundLayers(
+  image: HTMLImageElement,
+  input: { renderedUrl: string; sourceCandidates: string[] }
+): boolean {
+  let changed = false;
+
+  for (const layer of findVisualBackgroundLayers(image, input)) {
+    const currentBackground = getBackgroundImage(layer);
+
+    if (!layer.dataset.hanakoOriginalBackgroundImage) {
+      layer.dataset.hanakoOriginalBackgroundImage = currentBackground;
+    }
+
+    layer.dataset.hanakoRenderedBackgroundImage = input.renderedUrl;
+
+    if (backgroundImageMatches(currentBackground, [input.renderedUrl])) {
+      continue;
+    }
+
+    layer.style.backgroundImage = toCssUrl(input.renderedUrl);
+    changed = true;
+  }
+
+  return changed;
+}
+
+function restoreVisualBackgroundLayers(image: HTMLImageElement): void {
+  const container = findVisualMediaContainer(image);
+
+  if (!container) {
+    return;
+  }
+
+  for (const layer of getContainerElements(container)) {
+    if (!layer.dataset.hanakoOriginalBackgroundImage) {
+      continue;
+    }
+
+    layer.style.backgroundImage = layer.dataset.hanakoOriginalBackgroundImage;
+    delete layer.dataset.hanakoOriginalBackgroundImage;
+    delete layer.dataset.hanakoRenderedBackgroundImage;
+  }
+}
+
+function findVisualBackgroundLayers(
+  image: HTMLImageElement,
+  input: { renderedUrl: string; sourceCandidates: string[] }
+): HTMLElement[] {
+  const container = findVisualMediaContainer(image);
+
+  if (!container) {
+    return [];
+  }
+
+  const candidates = [input.renderedUrl, ...input.sourceCandidates].filter(
+    Boolean
+  );
+
+  return getContainerElements(container).filter((element) => {
+    if (element === image) {
+      return false;
+    }
+
+    if (element.dataset.hanakoOriginalBackgroundImage) {
+      return true;
+    }
+
+    const backgroundImage = getBackgroundImage(element);
+    return backgroundImageMatches(backgroundImage, candidates);
+  });
+}
+
+function findVisualMediaContainer(element: Element): Element | undefined {
+  let current: Element | null = element;
+  let depth = 0;
+
+  while (current && current !== current.ownerDocument.body && depth < 6) {
+    if (
+      current.matches(
+        '[aria-label="Image"], [data-testid="tweetPhoto"], [role="img"], picture, figure'
+      )
+    ) {
+      return current;
+    }
+
+    current = current.parentElement;
+    depth += 1;
+  }
+
+  return element.parentElement ?? undefined;
+}
+
+function getContainerElements(container: Element): HTMLElement[] {
+  return [container, ...Array.from(container.querySelectorAll("*"))].filter(
+    (element): element is HTMLElement => element instanceof HTMLElement
+  );
+}
+
+function getBackgroundImage(element: HTMLElement): string {
+  const inlineBackground = element.style.backgroundImage;
+
+  if (inlineBackground && inlineBackground !== "none") {
+    return inlineBackground;
+  }
+
+  return (
+    element.ownerDocument.defaultView?.getComputedStyle(element)
+      .backgroundImage ?? ""
+  );
+}
+
+function backgroundImageMatches(
+  backgroundImage: string,
+  candidates: string[]
+): boolean {
+  return (
+    backgroundImage !== "" &&
+    backgroundImage !== "none" &&
+    candidates.some((candidate) => backgroundImage.includes(candidate))
+  );
+}
+
+function toCssUrl(url: string): string {
+  return `url("${url.replace(/["\\]/g, "\\$&")}")`;
+}
+
+function getImageSourceCandidates(
+  image: HTMLImageElement,
+  replacement?: ImageReplacement
+): string[] {
+  return [
+    replacement?.sourceUrl,
+    image.dataset.hanakoOriginalSrc,
+    image.dataset.hanakoRenderedSrc,
+    image.currentSrc,
+    image.src,
+    image.getAttribute("src")
+  ].filter((candidate): candidate is string => Boolean(candidate));
 }
 
 function findReplacementTarget(

@@ -80,6 +80,63 @@ describe("content DOM replacer", () => {
     );
   });
 
+  it("updates X-style visual background image layers that sit beside the img", () => {
+    const documentRef = document.implementation.createHTMLDocument();
+    documentRef.body.innerHTML = `
+      <div aria-label="Image">
+        <div
+          data-testid="x-visual-layer"
+          style='filter: brightness(1); background-image: url("https://pbs.twimg.com/media/HKHoz35aAAEUr8K?format=jpg&name=4096x4096");'
+        ></div>
+        <img
+          alt="Image"
+          data-hanako-dom-id="hanako-context-img-0"
+          src="https://pbs.twimg.com/media/HKHoz35aAAEUr8K?format=jpg&name=4096x4096"
+          class="css-9pa8cd"
+        />
+      </div>
+    `;
+
+    const result = replaceDetectedImages(
+      [
+        {
+          domId: "hanako-context-img-0",
+          renderedUrl: "http://hanako.test/rendered.png",
+          sourceUrl:
+            "https://pbs.twimg.com/media/HKHoz35aAAEUr8K?format=jpg&name=4096x4096"
+        }
+      ],
+      documentRef
+    );
+
+    const visualLayer = documentRef.querySelector<HTMLElement>(
+      "[data-testid='x-visual-layer']"
+    );
+    const image = documentRef.querySelector("img");
+
+    expect(result).toEqual({ replaced: 1 });
+    expect(image?.getAttribute("src")).toBe("http://hanako.test/rendered.png");
+    expect(visualLayer?.style.backgroundImage).toContain(
+      "http://hanako.test/rendered.png"
+    );
+    expect(visualLayer?.dataset.hanakoOriginalBackgroundImage).toContain(
+      "HKHoz35aAAEUr8K"
+    );
+
+    visualLayer!.style.backgroundImage =
+      'url("https://pbs.twimg.com/media/HKHoz35aAAEUr8K?format=jpg&name=4096x4096")';
+
+    expect(reapplyStoredReplacements(documentRef)).toEqual({ replaced: 1 });
+    expect(visualLayer?.style.backgroundImage).toContain(
+      "http://hanako.test/rendered.png"
+    );
+
+    expect(clearDetectedImageReplacements(documentRef)).toEqual({
+      restored: 1
+    });
+    expect(visualLayer?.style.backgroundImage).toContain("HKHoz35aAAEUr8K");
+  });
+
   it("reapplies stored replacements when reader pages recycle image nodes", () => {
     const documentRef = document.implementation.createHTMLDocument();
     documentRef.body.innerHTML = `
