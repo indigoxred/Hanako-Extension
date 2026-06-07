@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   queueContextMenuImage,
@@ -10,6 +10,10 @@ import {
 } from "../src/background/queue-state.js";
 
 describe("queue flow", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("captures the clicked image into the local queue", async () => {
     const storage = createMemoryStorage();
     const result = await queueContextMenuImage({
@@ -68,53 +72,16 @@ describe("queue flow", () => {
     expect(await getQueuedImageCount(storage)).toBe(1);
   });
 
-  it("falls back to inactive image-tab capture before queueing an uncooperative image", async () => {
+  it("uses visible screenshot capture directly after source fetch fails", async () => {
     const storage = createMemoryStorage();
+    const createTab = vi.fn().mockRejectedValue(new Error("do not open tabs"));
     const fallbackCalls: string[] = [];
-    const result = await queueContextMenuImage({
-      captureImageBytes: async () => undefined,
-      captureImageBytesInNewTab: async (input) => {
-        fallbackCalls.push(`image-tab:${input.sourceUrl}`);
-        return {
-          bytesBase64: "pixiv-full-image",
-          mediaType: "image/jpeg",
-          name: "pixiv-page.jpg"
-        };
-      },
-      captureVisibleImageBytes: async () => {
-        fallbackCalls.push("visible-screenshot");
-        return undefined;
-      },
-      context: {
-        pageUrl: "https://www.pixiv.net/artworks/123",
-        srcUrl: "https://i.pximg.net/img-original/img/2026/06/07/page.jpg",
-        tabId: 5,
-        windowId: 9
-      },
-      fetchImageBytes: async () => undefined,
-      loadSettings: async () => ({
-        hanakoBaseUrl: "http://localhost:8787",
-        targetLanguage: "en"
-      }),
-      storage
+    vi.stubGlobal("chrome", {
+      tabs: { create: createTab }
     });
 
-    expect(result).toMatchObject({ count: 1, ok: true });
-    expect(fallbackCalls).toEqual([
-      "image-tab:https://i.pximg.net/img-original/img/2026/06/07/page.jpg"
-    ]);
-    expect(await getQueuedImageCount(storage)).toBe(1);
-  });
-
-  it("uses visible screenshot capture as the last queue fallback", async () => {
-    const storage = createMemoryStorage();
-    const fallbackCalls: string[] = [];
     const result = await queueContextMenuImage({
       captureImageBytes: async () => undefined,
-      captureImageBytesInNewTab: async () => {
-        fallbackCalls.push("image-tab");
-        return undefined;
-      },
       captureVisibleImageBytes: async (input) => {
         fallbackCalls.push(`visible:${input.sourceUrl}:${input.windowId}`);
         return {
@@ -141,9 +108,9 @@ describe("queue flow", () => {
 
     expect(result).toMatchObject({ count: 1, ok: true });
     expect(fallbackCalls).toEqual([
-      "image-tab",
       "visible:https://i.pximg.net/img-original/img/2026/06/07/page.jpg:9"
     ]);
+    expect(createTab).not.toHaveBeenCalled();
     expect(await getQueuedImageCount(storage)).toBe(1);
   });
 
@@ -151,7 +118,6 @@ describe("queue flow", () => {
     const storage = createMemoryStorage();
     const result = await queueContextMenuImage({
       captureImageBytes: async () => undefined,
-      captureImageBytesInNewTab: async () => undefined,
       captureVisibleImageBytes: async () => ({
         bytesBase64: "visible-crop",
         mediaType: "image/png",

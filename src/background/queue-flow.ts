@@ -6,7 +6,6 @@ import {
 import {
   resolveContextImageBytes,
   type CaptureContextImageBytes,
-  type CaptureContextImageBytesInNewTab,
   type CaptureVisibleContextImageBytes,
   type ContextMenuImageContext
 } from "./context-menu-flow.js";
@@ -38,7 +37,6 @@ export type SendQueueResult =
 
 export interface QueueContextMenuImageInput {
   captureImageBytes?: CaptureContextImageBytes;
-  captureImageBytesInNewTab?: CaptureContextImageBytesInNewTab;
   captureVisibleImageBytes?: CaptureVisibleContextImageBytes;
   context: ContextMenuImageContext;
   fetchImageBytes?: FetchImageBytes;
@@ -54,7 +52,6 @@ export interface SendQueuedImagesInput {
 
 export async function queueContextMenuImage({
   captureImageBytes,
-  captureImageBytesInNewTab,
   captureVisibleImageBytes,
   context,
   fetchImageBytes,
@@ -78,7 +75,6 @@ export async function queueContextMenuImage({
     },
     {
       captureImageBytes,
-      captureImageBytesInNewTab,
       captureVisibleImageBytes,
       fetchImageBytes
     }

@@ -82,17 +82,12 @@ export type CaptureContextImageBytes = (
   input: CaptureContextImageInput
 ) => Promise<ContextImageBytesPayload | undefined>;
 
-export type CaptureContextImageBytesInNewTab = (
-  input: CaptureContextImageInput
-) => Promise<ContextImageBytesPayload | undefined>;
-
 export type CaptureVisibleContextImageBytes = (
   input: CaptureContextImageInput
 ) => Promise<ContextImageBytesPayload | undefined>;
 
 export interface ResolveContextImageBytesDependencies {
   captureImageBytes?: CaptureContextImageBytes;
-  captureImageBytesInNewTab?: CaptureContextImageBytesInNewTab;
   captureVisibleImageBytes?: CaptureVisibleContextImageBytes;
   fetchImageBytes?: FetchImageBytes;
 }
@@ -103,7 +98,6 @@ interface ResolvedContextImageCandidate extends ExtensionImageCandidate {
 
 export interface TranslateContextMenuImageDependencies {
   captureImageBytes?: CaptureContextImageBytes;
-  captureImageBytesInNewTab?: CaptureContextImageBytesInNewTab;
   captureVisibleImageBytes?: CaptureVisibleContextImageBytes;
   context: ContextMenuImageContext;
   fetchImageBytes?: FetchImageBytes;
@@ -124,7 +118,6 @@ export interface TranslateContextMenuImageDependencies {
 
 export async function translateContextMenuImage({
   captureImageBytes,
-  captureImageBytesInNewTab,
   captureVisibleImageBytes,
   context,
   fetchImageBytes,
@@ -158,7 +151,6 @@ export async function translateContextMenuImage({
     },
     {
       captureImageBytes,
-      captureImageBytesInNewTab,
       captureVisibleImageBytes,
       fetchImageBytes
     }
@@ -310,8 +302,6 @@ export async function resolveContextImageBytes(
   });
   const captureImageBytes =
     dependencies.captureImageBytes ?? captureContextImageBytes;
-  const captureImageBytesInNewTab =
-    dependencies.captureImageBytesInNewTab ?? captureContextImageBytesInNewTab;
   const captureVisibleImageBytes =
     dependencies.captureVisibleImageBytes ?? captureVisibleContextImageBytes;
   const captured = await captureImageBytes(input).catch(() => undefined);
@@ -328,18 +318,6 @@ export async function resolveContextImageBytes(
 
   if (hasSupportedImageBytes(sourceFetched)) {
     return sourceFetched;
-  }
-
-  const imageTabCaptured = await captureImageBytesInNewTab(input).catch(
-    () => undefined
-  );
-  const imageTabImage = {
-    ...base,
-    ...(imageTabCaptured ?? {})
-  };
-
-  if (hasSupportedImageBytes(imageTabImage)) {
-    return imageTabImage;
   }
 
   const visibleCaptured = await captureVisibleImageBytes(input).catch(
@@ -370,57 +348,6 @@ export async function captureContextImageBytes(
     return response.image;
   }
   return undefined;
-}
-
-export async function captureContextImageBytesInNewTab(
-  input: CaptureContextImageInput,
-  dependencies: ImageTabCaptureDependencies = {}
-): Promise<ContextImageBytesPayload | undefined> {
-  if (!isHttpUrl(input.sourceUrl)) {
-    return undefined;
-  }
-
-  const createTab = dependencies.createTab ?? defaultCreateImageTab;
-  const removeTab = dependencies.removeTab ?? defaultRemoveTab;
-  const waitForTabComplete =
-    dependencies.waitForTabComplete ?? defaultWaitForImageTabComplete;
-  const executeContentScript =
-    dependencies.executeContentScript ?? defaultExecuteContentScript;
-  const sendCaptureMessage =
-    dependencies.sendCaptureMessage ?? defaultSendCaptureMessage;
-  const waitForCaptureRetry =
-    dependencies.waitForCaptureRetry ?? defaultWaitForCaptureRetry;
-  const maxCaptureAttempts = dependencies.maxCaptureAttempts ?? 20;
-  const tab = await createTab(input.sourceUrl).catch(() => undefined);
-  const tabId = tab?.id;
-  const tabStatus = tab?.status;
-
-  if (tabId === undefined) {
-    return undefined;
-  }
-
-  try {
-    await waitForTabComplete(tabId, tabStatus);
-    await executeContentScript(tabId);
-
-    for (let attempt = 1; attempt <= maxCaptureAttempts; attempt += 1) {
-      const response = await sendCaptureMessage(tabId, input.sourceUrl).catch(
-        () => undefined
-      );
-
-      if (isCaptureImageBytesResponse(response)) {
-        return response.image;
-      }
-
-      if (attempt < maxCaptureAttempts) {
-        await waitForCaptureRetry(attempt);
-      }
-    }
-
-    return undefined;
-  } finally {
-    await removeTab(tabId).catch(() => undefined);
-  }
 }
 
 export async function captureVisibleContextImageBytes(
@@ -510,89 +437,12 @@ function isCaptureImageBytesResponse(response: unknown): response is {
   );
 }
 
-interface ImageTabCaptureDependencies {
-  createTab?: (url: string) => Promise<{ id?: number; status?: string }>;
-  executeContentScript?: (tabId: number) => Promise<void>;
-  maxCaptureAttempts?: number;
-  removeTab?: (tabId: number) => Promise<void>;
-  sendCaptureMessage?: (tabId: number, sourceUrl: string) => Promise<unknown>;
-  waitForCaptureRetry?: (attempt: number) => Promise<void>;
-  waitForTabComplete?: (tabId: number, initialStatus?: string) => Promise<void>;
-}
-
 interface VisibleContextImageCaptureDependencies {
   captureVisibleElementBitmap?: (input: {
     rect: VisibleElementRect;
     sourceUrl: string;
     windowId?: number;
   }) => Promise<ImageBytesPayload | undefined>;
-}
-
-function defaultCreateImageTab(
-  url: string
-): Promise<{ id?: number; status?: string }> {
-  return chrome.tabs.create({ active: false, url }) as Promise<{
-    id?: number;
-    status?: string;
-  }>;
-}
-
-function defaultRemoveTab(tabId: number): Promise<void> {
-  return chrome.tabs.remove(tabId).then(() => undefined);
-}
-
-function defaultExecuteContentScript(tabId: number): Promise<void> {
-  return chrome.scripting
-    .executeScript({
-      files: ["content/content-entry.js"],
-      target: { tabId }
-    })
-    .then(() => undefined);
-}
-
-function defaultSendCaptureMessage(
-  tabId: number,
-  sourceUrl: string
-): Promise<unknown> {
-  return chrome.tabs.sendMessage(tabId, {
-    sourceUrl,
-    type: "HANAKO_CAPTURE_IMAGE_BYTES"
-  });
-}
-
-function defaultWaitForCaptureRetry(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 250));
-}
-
-function defaultWaitForImageTabComplete(
-  tabId: number,
-  initialStatus?: string
-): Promise<void> {
-  if (initialStatus === "complete") {
-    return Promise.resolve();
-  }
-
-  return new Promise((resolve) => {
-    const done = (
-      timeout: ReturnType<typeof setTimeout>,
-      listener: (updatedTabId: number, changeInfo: { status?: string }) => void
-    ) => {
-      clearTimeout(timeout);
-      chrome.tabs.onUpdated.removeListener(listener);
-      resolve();
-    };
-    const listener = (
-      updatedTabId: number,
-      changeInfo: { status?: string }
-    ) => {
-      if (updatedTabId === tabId && changeInfo.status === "complete") {
-        done(timeout, listener);
-      }
-    };
-    const timeout = setTimeout(() => done(timeout, listener), 15000);
-
-    chrome.tabs.onUpdated.addListener(listener);
-  });
 }
 
 function isLocatedImageElementResponse(response: unknown): response is {
@@ -645,15 +495,6 @@ function hasSupportedImageBytes(
       image.mediaType.split(";")[0]?.trim().toLowerCase() ?? ""
     )
   );
-}
-
-function isHttpUrl(rawUrl: string): boolean {
-  try {
-    const url = new URL(rawUrl);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 function withoutCaptureWarning(
