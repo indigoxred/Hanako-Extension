@@ -125,7 +125,9 @@ export async function translateActiveTab(
   }
 
   const detail = await translatePage({
+    autoGlossaryStorageScopeId: settings.autoGlossaryStorageScopeId,
     baseUrl: settings.hanakoBaseUrl,
+    glossaryScopeIds: settings.glossaryScopeIds,
     images: uploadImages,
     targetLanguage: settings.targetLanguage
   });

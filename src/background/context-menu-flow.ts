@@ -185,7 +185,9 @@ export async function translateContextMenuImage({
     phase: "submitting-job"
   });
   const detail = await translateImage({
+    autoGlossaryStorageScopeId: settings.autoGlossaryStorageScopeId,
     baseUrl: settings.hanakoBaseUrl,
+    glossaryScopeIds: settings.glossaryScopeIds,
     image: uploadImage,
     targetLanguage: settings.targetLanguage
   });
