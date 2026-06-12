@@ -125,7 +125,9 @@ export async function sendQueuedImages({
 
   const settings = await loadSettings();
   const detail = await translatePage({
+    autoGlossaryStorageScopeId: settings.autoGlossaryStorageScopeId,
     baseUrl: settings.hanakoBaseUrl,
+    glossaryScopeIds: settings.glossaryScopeIds,
     images: queued.map((item) => ({
       bytesBase64: item.bytesBase64,
       ...(item.height === undefined ? {} : { height: item.height }),

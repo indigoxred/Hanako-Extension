@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   checkHanakoConnection,
+  getGlossaryScopes,
   translateImage,
   translatePage
 } from "../src/background/hanako-client.js";
@@ -24,6 +25,27 @@ describe("Hanako extension client", () => {
     });
 
     expect(ok).toBe(true);
+  });
+
+  it("fetches glossary scopes for the configured target language", async () => {
+    const scopes = await getGlossaryScopes({
+      baseUrl: "http://hanako.test/",
+      fetch: async (input) => {
+        expect(input).toBe(
+          "http://hanako.test/api/glossary/scopes?targetLanguage=ja"
+        );
+        return new Response(
+          JSON.stringify({
+            scopes: [{ id: "scope_1", name: "Main", parentId: null }]
+          })
+        );
+      },
+      targetLanguage: "ja"
+    });
+
+    expect(scopes).toEqual({
+      scopes: [{ id: "scope_1", name: "Main", parentId: null }]
+    });
   });
 
   it("polls extension jobs against the configured base URL", async () => {
@@ -154,6 +176,8 @@ describe("Hanako extension client", () => {
         expect(init?.method).toBe("POST");
         expect(init?.headers).toEqual({ "content-type": "application/json" });
         expect(JSON.parse(String(init?.body))).toEqual({
+          autoGlossaryStorageScopeId: "scope_new",
+          glossaryScopeIds: ["scope_1", "scope_2"],
           image: {
             bytesBase64: "cGFnZSAx",
             height: 1200,
@@ -168,6 +192,8 @@ describe("Hanako extension client", () => {
           status: 201
         });
       },
+      autoGlossaryStorageScopeId: "scope_new",
+      glossaryScopeIds: ["scope_1", "scope_2"],
       image: {
         bytesBase64: "cGFnZSAx",
         height: 1200,
@@ -217,6 +243,8 @@ describe("Hanako extension client", () => {
           width: 800
         }
       ],
+      autoGlossaryStorageScopeId: null,
+      glossaryScopeIds: [],
       targetLanguage: "ja"
     });
 

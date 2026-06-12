@@ -29,6 +29,8 @@ describe("queue flow", () => {
         tabId: 5
       },
       loadSettings: async () => ({
+        autoGlossaryStorageScopeId: "scope_new",
+        glossaryScopeIds: ["scope_1"],
         hanakoBaseUrl: "http://localhost:8787",
         targetLanguage: "en"
       }),
@@ -175,13 +177,17 @@ describe("queue flow", () => {
 
     const result = await sendQueuedImages({
       loadSettings: async () => ({
+        autoGlossaryStorageScopeId: "scope_new",
+        glossaryScopeIds: ["scope_1"],
         hanakoBaseUrl: "http://localhost:8787",
         targetLanguage: "en"
       }),
       storage,
       translatePage: async (input) => {
         expect(input).toMatchObject({
+          autoGlossaryStorageScopeId: "scope_new",
           baseUrl: "http://localhost:8787",
+          glossaryScopeIds: ["scope_1"],
           mode: "auto",
           targetLanguage: "en"
         });

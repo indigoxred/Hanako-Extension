@@ -9,6 +9,8 @@ describe("extension translate flow", () => {
     const replacements: unknown[] = [];
     const result = await translateActiveTab({
       loadSettings: async () => ({
+        autoGlossaryStorageScopeId: "scope_new",
+        glossaryScopeIds: ["scope_1"],
         hanakoBaseUrl: "http://localhost:8787/",
         targetLanguage: "ja"
       }),
@@ -45,7 +47,9 @@ describe("extension translate flow", () => {
       },
       translatePage: async (input) => {
         expect(input).toMatchObject({
+          autoGlossaryStorageScopeId: "scope_new",
           baseUrl: "http://localhost:8787/",
+          glossaryScopeIds: ["scope_1"],
           images: [
             {
               bytesBase64: "cGFnZSAx",

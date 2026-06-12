@@ -38,6 +38,8 @@ describe("context menu translation flow", () => {
         throw new Error("The source URL should not be fetched after capture");
       },
       loadSettings: async () => ({
+        autoGlossaryStorageScopeId: "scope_new",
+        glossaryScopeIds: ["scope_1"],
         hanakoBaseUrl: "http://localhost:8787",
         targetLanguage: "en"
       }),
@@ -89,6 +91,8 @@ describe("context menu translation flow", () => {
         throw new Error(`Unexpected URL fetch for ${image.url}`);
       },
       loadSettings: async () => ({
+        autoGlossaryStorageScopeId: "scope_new",
+        glossaryScopeIds: ["scope_1"],
         hanakoBaseUrl: "http://localhost:8787",
         targetLanguage: "en"
       }),
@@ -101,7 +105,9 @@ describe("context menu translation flow", () => {
       },
       translateImage: async (input) => {
         expect(input).toMatchObject({
+          autoGlossaryStorageScopeId: "scope_new",
           baseUrl: "http://localhost:8787",
+          glossaryScopeIds: ["scope_1"],
           image: {
             bytesBase64: "cGFnZSAx",
             mediaType: "image/png",
