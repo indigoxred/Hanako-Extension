@@ -39,10 +39,11 @@ Changing the target language clears selected glossary groups and resets new glos
 
 ## Translation Request Flow
 
-Both extension translation paths use the saved glossary settings:
+All extension translation paths use the saved glossary settings:
 
 - active-page batch flow
 - right-click single-image flow
+- queued project submission flow
 
 `translateImage` and `translatePage` include `glossaryScopeIds` only when at least one group is selected. They include `autoGlossaryStorageScopeId` only when a group is selected for new glossary terms.
 
@@ -65,7 +66,7 @@ Extension tests cover:
 - settings defaults and persistence for glossary fields
 - fetching glossary scopes from Hanako
 - client payloads for single-image and page-batch jobs
-- active-page and context-menu flows forwarding saved glossary fields
+- active-page, context-menu, and queued project flows forwarding saved glossary fields
 - options UI defaulting new glossary terms to `None (Disabled)`
 
 Hanako tests cover:
