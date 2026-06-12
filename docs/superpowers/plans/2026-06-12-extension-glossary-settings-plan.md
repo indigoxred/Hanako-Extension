@@ -24,6 +24,7 @@
 ### Task 1: Extension Settings
 
 **Files:**
+
 - Modify: `src/options/extension-settings.ts`
 - Test: `tests/extension-settings.test.ts`
 
@@ -75,6 +76,7 @@ Commit message: `Add extension glossary settings`
 ### Task 2: Extension Hanako Client
 
 **Files:**
+
 - Modify: `src/background/hanako-client.ts`
 - Test: `tests/hanako-client.test.ts`
 
@@ -86,8 +88,12 @@ Add tests for `getGlossaryScopes`, `translateImage` with glossary fields, and `t
 const scopes = await getGlossaryScopes({
   baseUrl: "http://hanako.test",
   fetch: async (input) => {
-    expect(input).toBe("http://hanako.test/api/glossary/scopes?targetLanguage=ja");
-    return new Response(JSON.stringify({ scopes: [{ id: "scope_1", name: "Main" }] }));
+    expect(input).toBe(
+      "http://hanako.test/api/glossary/scopes?targetLanguage=ja"
+    );
+    return new Response(
+      JSON.stringify({ scopes: [{ id: "scope_1", name: "Main" }] })
+    );
   },
   targetLanguage: "ja"
 });
@@ -115,6 +121,7 @@ Commit message: `Send glossary settings to Hanako`
 ### Task 3: Extension Flow Forwarding
 
 **Files:**
+
 - Modify: `src/background/translate-flow.ts`
 - Modify: `src/background/context-menu-flow.ts`
 - Modify: `src/background/queue-flow.ts`
@@ -158,6 +165,7 @@ Commit message: `Forward glossary settings from extension flows`
 ### Task 4: Options UI Glossary Controls
 
 **Files:**
+
 - Modify: `src/options/Options.tsx`
 - Test: `tests/options-ui.test.ts`
 
@@ -186,6 +194,7 @@ Commit message: `Add extension glossary options`
 ### Task 5: Hanako Extension API
 
 **Files:**
+
 - Modify: `packages/contracts/src/extension.schema.ts`
 - Modify: `packages/contracts/tests/contracts.test.ts`
 - Modify: `apps/api/src/routes/extension.routes.ts`
@@ -229,6 +238,7 @@ Commit message: `Accept glossary settings from extension jobs`
 ### Task 6: Final Verification and Publishing
 
 **Files:**
+
 - All changed files in both repositories.
 
 - [ ] **Step 1: Run extension verification**

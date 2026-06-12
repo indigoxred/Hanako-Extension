@@ -93,7 +93,9 @@ export async function getGlossaryScopes({
   );
 
   if (!response.ok) {
-    throw new Error(`Hanako glossary scope request failed with ${response.status}`);
+    throw new Error(
+      `Hanako glossary scope request failed with ${response.status}`
+    );
   }
 
   return (await response.json()) as GlossaryScopesResponse;

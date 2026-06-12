@@ -1,6 +1,6 @@
 export interface ExtensionSettings {
-  autoGlossaryStorageScopeId: string | null;
-  glossaryScopeIds: string[];
+  autoGlossaryStorageScopeId?: string | null;
+  glossaryScopeIds?: string[];
   hanakoBaseUrl: string;
   queueContextMenusEnabled?: boolean;
   targetLanguage: string;
@@ -33,9 +33,7 @@ export async function loadExtensionSettings(
   const stored = await storage.get({ ...DEFAULT_EXTENSION_SETTINGS });
 
   return {
-    autoGlossaryStorageScopeId: stringOrNull(
-      stored.autoGlossaryStorageScopeId
-    ),
+    autoGlossaryStorageScopeId: stringOrNull(stored.autoGlossaryStorageScopeId),
     glossaryScopeIds: arrayOfStrings(stored.glossaryScopeIds),
     hanakoBaseUrl: stringOrDefault(
       stored.hanakoBaseUrl,
