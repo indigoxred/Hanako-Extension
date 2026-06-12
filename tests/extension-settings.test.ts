@@ -13,21 +13,40 @@ describe("extension settings", () => {
     const storage = createMemoryStorage();
 
     await expect(loadExtensionSettings(storage)).resolves.toEqual({
+      autoGlossaryStorageScopeId: null,
+      glossaryScopeIds: [],
       hanakoBaseUrl: "http://localhost:8787",
       queueContextMenusEnabled: true,
       targetLanguage: "en"
     });
 
     await saveExtensionSettings(storage, {
+      autoGlossaryStorageScopeId: " scope_new ",
+      glossaryScopeIds: [" scope_1 ", "", "scope_1", "scope_2"],
       hanakoBaseUrl: "http://tower.local:8787",
       queueContextMenusEnabled: false,
       targetLanguage: "ja"
     });
 
     await expect(loadExtensionSettings(storage)).resolves.toEqual({
+      autoGlossaryStorageScopeId: "scope_new",
+      glossaryScopeIds: ["scope_1", "scope_2"],
       hanakoBaseUrl: "http://tower.local:8787",
       queueContextMenusEnabled: false,
       targetLanguage: "ja"
+    });
+  });
+
+  it("loads invalid glossary settings as disabled defaults", async () => {
+    const storage = createMemoryStorage();
+    await storage.set({
+      autoGlossaryStorageScopeId: " ",
+      glossaryScopeIds: ["", 3, " scope_1 ", "scope_1", "scope_2"]
+    });
+
+    await expect(loadExtensionSettings(storage)).resolves.toMatchObject({
+      autoGlossaryStorageScopeId: null,
+      glossaryScopeIds: ["scope_1", "scope_2"]
     });
   });
 
@@ -52,6 +71,8 @@ describe("extension settings", () => {
   it("does not overwrite saved settings with an invalid Hanako base URL", async () => {
     const storage = createMemoryStorage();
     await saveExtensionSettings(storage, {
+      autoGlossaryStorageScopeId: null,
+      glossaryScopeIds: [],
       hanakoBaseUrl: "http://192.168.50.138:8787",
       queueContextMenusEnabled: false,
       targetLanguage: "ja"
@@ -59,6 +80,8 @@ describe("extension settings", () => {
 
     await expect(
       saveExtensionSettings(storage, {
+        autoGlossaryStorageScopeId: "scope_new",
+        glossaryScopeIds: ["scope_1"],
         hanakoBaseUrl: "http://192.168.50.138",
         queueContextMenusEnabled: true,
         targetLanguage: "ko"
@@ -66,6 +89,8 @@ describe("extension settings", () => {
     ).rejects.toThrow("Hanako base URL must include http(s), host, and port");
 
     await expect(loadExtensionSettings(storage)).resolves.toEqual({
+      autoGlossaryStorageScopeId: null,
+      glossaryScopeIds: [],
       hanakoBaseUrl: "http://192.168.50.138:8787",
       queueContextMenusEnabled: false,
       targetLanguage: "ja"

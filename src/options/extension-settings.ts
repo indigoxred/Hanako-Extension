@@ -1,4 +1,6 @@
 export interface ExtensionSettings {
+  autoGlossaryStorageScopeId: string | null;
+  glossaryScopeIds: string[];
   hanakoBaseUrl: string;
   queueContextMenusEnabled?: boolean;
   targetLanguage: string;
@@ -18,6 +20,8 @@ export interface HanakoBaseUrlValidationResult {
 }
 
 export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
+  autoGlossaryStorageScopeId: null,
+  glossaryScopeIds: [],
   hanakoBaseUrl: "http://localhost:8787",
   queueContextMenusEnabled: true,
   targetLanguage: "en"
@@ -29,6 +33,10 @@ export async function loadExtensionSettings(
   const stored = await storage.get({ ...DEFAULT_EXTENSION_SETTINGS });
 
   return {
+    autoGlossaryStorageScopeId: stringOrNull(
+      stored.autoGlossaryStorageScopeId
+    ),
+    glossaryScopeIds: arrayOfStrings(stored.glossaryScopeIds),
     hanakoBaseUrl: stringOrDefault(
       stored.hanakoBaseUrl,
       DEFAULT_EXTENSION_SETTINGS.hanakoBaseUrl
@@ -55,6 +63,10 @@ export async function saveExtensionSettings(
   }
 
   await storage.set({
+    autoGlossaryStorageScopeId: stringOrNull(
+      settings.autoGlossaryStorageScopeId
+    ),
+    glossaryScopeIds: arrayOfStrings(settings.glossaryScopeIds),
     hanakoBaseUrl: validated.value,
     queueContextMenusEnabled: settings.queueContextMenusEnabled !== false,
     targetLanguage:
@@ -73,6 +85,23 @@ function stringOrDefault(value: unknown, fallback: string): string {
 
 function booleanOrDefault(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function arrayOfStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(value.flatMap((item) => stringOrNull(item) ?? []))];
+}
+
+function stringOrNull(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }
 
 export function isValidHanakoBaseUrl(value: string): boolean {
