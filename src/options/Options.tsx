@@ -2,6 +2,10 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import {
+  getGlossaryScopes,
+  type GlossaryScope
+} from "../background/hanako-client.js";
+import {
   DEFAULT_EXTENSION_SETTINGS,
   getDefaultStorage,
   loadExtensionSettings,
@@ -13,6 +17,8 @@ function OptionsApp() {
   const [settings, setSettings] = useState<ExtensionSettings>(
     DEFAULT_EXTENSION_SETTINGS
   );
+  const [glossaryScopes, setGlossaryScopes] = useState<GlossaryScope[]>([]);
+  const [glossaryStatus, setGlossaryStatus] = useState("");
   const [status, setStatus] = useState("Loading");
 
   useEffect(() => {
@@ -25,6 +31,55 @@ function OptionsApp() {
         setStatus(error instanceof Error ? error.message : "Load failed")
       );
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!settings.hanakoBaseUrl.trim()) {
+      setGlossaryScopes([]);
+      return;
+    }
+
+    setGlossaryStatus("Loading glossary groups");
+    void getGlossaryScopes({
+      baseUrl: settings.hanakoBaseUrl,
+      targetLanguage: settings.targetLanguage
+    })
+      .then(({ scopes }) => {
+        if (cancelled) {
+          return;
+        }
+
+        const scopeIds = new Set(scopes.map((scope) => scope.id));
+        setGlossaryScopes(scopes);
+        setGlossaryStatus("");
+        setSettings((current) => ({
+          ...current,
+          autoGlossaryStorageScopeId:
+            current.autoGlossaryStorageScopeId &&
+            scopeIds.has(current.autoGlossaryStorageScopeId)
+              ? current.autoGlossaryStorageScopeId
+              : null,
+          glossaryScopeIds: (current.glossaryScopeIds ?? []).filter((scopeId) =>
+            scopeIds.has(scopeId)
+          )
+        }));
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setGlossaryScopes([]);
+        setGlossaryStatus(
+          error instanceof Error ? error.message : "Glossary groups unavailable"
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.hanakoBaseUrl, settings.targetLanguage]);
 
   return (
     <main>
@@ -58,6 +113,8 @@ function OptionsApp() {
             onChange={(event) =>
               setSettings((current) => ({
                 ...current,
+                autoGlossaryStorageScopeId: null,
+                glossaryScopeIds: [],
                 targetLanguage: event.target.value
               }))
             }
@@ -76,11 +133,66 @@ function OptionsApp() {
           />
           Show queue context menu actions
         </label>
+        <fieldset>
+          <legend>Glossary groups</legend>
+          {glossaryScopes.length > 0 ? (
+            glossaryScopes.map((scope) => (
+              <label key={scope.id}>
+                <input
+                  checked={(settings.glossaryScopeIds ?? []).includes(scope.id)}
+                  type="checkbox"
+                  onChange={() =>
+                    setSettings((current) => ({
+                      ...current,
+                      glossaryScopeIds: toggleGlossaryScopeId(
+                        current.glossaryScopeIds ?? [],
+                        scope.id
+                      )
+                    }))
+                  }
+                />
+                {scopeLabel(scope)}
+              </label>
+            ))
+          ) : (
+            <p>No glossary groups found</p>
+          )}
+        </fieldset>
+        <label>
+          New glossary terms
+          <select
+            value={settings.autoGlossaryStorageScopeId ?? ""}
+            onChange={(event) =>
+              setSettings((current) => ({
+                ...current,
+                autoGlossaryStorageScopeId: event.target.value || null
+              }))
+            }
+          >
+            <option value="">None (Disabled)</option>
+            {glossaryScopes.map((scope) => (
+              <option key={scope.id} value={scope.id}>
+                {scopeLabel(scope)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {glossaryStatus ? <p role="status">{glossaryStatus}</p> : null}
         <button type="submit">Save</button>
       </form>
       {status ? <p role="status">{status}</p> : null}
     </main>
   );
+}
+
+function toggleGlossaryScopeId(scopeIds: string[], scopeId: string): string[] {
+  return scopeIds.includes(scopeId)
+    ? scopeIds.filter((current) => current !== scopeId)
+    : [...scopeIds, scopeId];
+}
+
+function scopeLabel(scope: GlossaryScope): string {
+  return scope.parentId ? `  ${scope.name}` : scope.name;
 }
 
 const root = document.getElementById("root");
