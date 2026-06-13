@@ -39,12 +39,14 @@ export interface JobManagerDependencies {
     context?: ContextMenuImageContext;
   }) => Promise<SendQueueResult>;
   openTab?: (url: string) => Promise<void>;
-  setActionStatus?: (status: ActionStatus) => Promise<void>;
+  setActionStatus?: (status: ActionStatus, tabId?: number) => Promise<void>;
   setTabJobState?: (
     tabId: number,
     state: Omit<StoredJobState, "updatedAt">
   ) => Promise<StoredJobState>;
-  translateActiveTab?: () => Promise<TranslateActiveTabResult>;
+  translateActiveTab?: (input?: {
+    onTabResolved?: (tabId: number) => Promise<void> | void;
+  }) => Promise<TranslateActiveTabResult>;
   translateContextMenuImage?: (input: {
     context: ContextMenuImageContext;
   }) => Promise<ContextMenuTranslationResult>;
@@ -129,14 +131,14 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
           message: result.error,
           status: "failed"
         });
-        await setActionStatus("error");
+        await setActionStatus("error", context.tabId);
       }
 
       return result;
     },
     sendQueuedImages: (context?: ContextMenuImageContext) =>
       dedupe("send-queue", async () => {
-        await setActionStatus("running");
+        await setActionStatus("running", context?.tabId);
         await setContextTabJobState(context, {
           message: "Finalizing project",
           phase: "finalizing-project",
@@ -171,35 +173,40 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
             }),
             openJobTab(result.jobUrl)
           ]);
-          await setActionStatus("success");
+          await setActionStatus("success", context?.tabId);
         } else {
           await setContextTabJobState(context, {
             message: result.error,
             phase: "failed",
             status: "failed"
           });
-          await setActionStatus("error");
+          await setActionStatus("error", context?.tabId);
         }
 
         return result;
       }),
     translateActiveTab: () =>
       dedupe("active-tab", async () => {
-        await setActionStatus("running");
+        let tabId: number | undefined;
         const result = await (
           dependencies.translateActiveTab ?? defaultTranslateActiveTab
-        )().catch((error: unknown) => ({
+        )({
+          onTabResolved: async (resolvedTabId) => {
+            tabId = resolvedTabId;
+            await setActionStatus("running", resolvedTabId);
+          }
+        }).catch((error: unknown) => ({
           error: errorMessage(error, "Translation failed"),
           ok: false as const
         }));
-        await setActionStatus(result.ok ? "success" : "error");
+        await setActionStatus(actionStatusFromTranslationResult(result), tabId);
         return result;
       }),
     translateContextMenuImage: (context: ContextMenuImageContext) =>
       dedupe(
         `context:${context.tabId ?? "none"}:${context.srcUrl ?? "none"}`,
         async () => {
-          await setActionStatus("running");
+          await setActionStatus("running", context.tabId);
           await setContextTabJobState(context, {
             message: "Translating clicked image",
             phase: "starting",
@@ -224,7 +231,10 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
             context,
             contextJobStateFromResult(result)
           );
-          await setActionStatus(result.ok ? "success" : "error");
+          await setActionStatus(
+            actionStatusFromTranslationResult(result),
+            context.tabId
+          );
           return result;
         }
       )
@@ -258,6 +268,16 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+function actionStatusFromTranslationResult(
+  result: TranslateActiveTabResult | ContextMenuTranslationResult
+): ActionStatus {
+  if (!result.ok) {
+    return "error";
+  }
+
+  return result.status === "timeout" ? "running" : "success";
 }
 
 function contextJobStateFromResult(

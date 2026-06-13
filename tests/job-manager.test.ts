@@ -5,13 +5,14 @@ import { createJobManager } from "../src/background/job-manager.js";
 describe("job manager", () => {
   it("deduplicates an active tab translation", async () => {
     let calls = 0;
-    const statuses: string[] = [];
+    const statuses: Array<{ status: string; tabId?: number }> = [];
     const manager = createJobManager({
-      setActionStatus: async (status) => {
-        statuses.push(status);
+      setActionStatus: async (status, tabId) => {
+        statuses.push({ status, tabId });
       },
-      translateActiveTab: async () => {
+      translateActiveTab: async (input) => {
         calls += 1;
+        await input?.onTabResolved?.(7);
         await new Promise((resolve) => setTimeout(resolve, 1));
         return {
           imageCount: 1,
@@ -29,7 +30,10 @@ describe("job manager", () => {
     ]);
 
     expect(calls).toBe(1);
-    expect(statuses).toEqual(["running", "success"]);
+    expect(statuses).toEqual([
+      { status: "running", tabId: 7 },
+      { status: "success", tabId: 7 }
+    ]);
   });
 
   it("updates queue indicators after queueing an image", async () => {
@@ -53,6 +57,33 @@ describe("job manager", () => {
     ).resolves.toEqual({ count: 2, ok: true });
     expect(badgeCounts).toEqual([2]);
     expect(menuCounts).toEqual([2]);
+  });
+
+  it("keeps the source tab badge running when a translation times out", async () => {
+    const statuses: Array<{ status: string; tabId?: number }> = [];
+    const manager = createJobManager({
+      setActionStatus: async (status, tabId) => {
+        statuses.push({ status, tabId });
+      },
+      translateContextMenuImage: async () => ({
+        jobId: "job_1",
+        ok: true,
+        replacementCount: 0,
+        status: "timeout"
+      })
+    });
+
+    await expect(
+      manager.translateContextMenuImage({
+        srcUrl: "https://manga.example/page.png",
+        tabId: 7
+      })
+    ).resolves.toMatchObject({ jobId: "job_1", ok: true, status: "timeout" });
+
+    expect(statuses).toEqual([
+      { status: "running", tabId: 7 },
+      { status: "running", tabId: 7 }
+    ]);
   });
 
   it("clears queue indicators after sending a queue", async () => {
@@ -90,8 +121,11 @@ describe("job manager", () => {
 
   it("stores context menu job status for the source tab", async () => {
     const states: unknown[] = [];
+    const statuses: Array<{ status: string; tabId?: number }> = [];
     const manager = createJobManager({
-      setActionStatus: async () => undefined,
+      setActionStatus: async (status, tabId) => {
+        statuses.push({ status, tabId });
+      },
       setTabJobState: async (tabId, state) => {
         states.push({ state, tabId });
         return { ...state, updatedAt: "now" };
@@ -111,6 +145,10 @@ describe("job manager", () => {
       })
     ).resolves.toMatchObject({ jobId: "job_1", ok: true });
 
+    expect(statuses).toEqual([
+      { status: "running", tabId: 7 },
+      { status: "success", tabId: 7 }
+    ]);
     expect(states).toEqual([
       {
         state: {

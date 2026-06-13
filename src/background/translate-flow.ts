@@ -55,6 +55,7 @@ export interface TranslateActiveTabDependencies {
   executeContentScript?: (tabId: number) => Promise<void>;
   fetchImageBytes?: FetchImageBytes;
   loadSettings?: () => Promise<ExtensionSettings>;
+  onTabResolved?: (tabId: number) => Promise<void> | void;
   openTab?: (url: string) => Promise<void>;
   queryActiveTab?: () => Promise<{ id?: number }>;
   sendDetectImagesMessage?: (tabId: number) => Promise<DetectImagesResponse>;
@@ -95,6 +96,7 @@ export async function translateActiveTab(
     return { error: "No active tab was available", ok: false };
   }
 
+  await dependencies.onTabResolved?.(tab.id);
   await executeContentScript(tab.id);
   const detected = await sendDetectImagesMessage(tab.id);
 
