@@ -1,13 +1,17 @@
 export type ActionStatus = "idle" | "running" | "success" | "error";
 
 export interface ActionApi {
-  setBadgeText(input: { text: string }): Promise<void> | void;
-  setBadgeBackgroundColor(input: { color: string }): Promise<void> | void;
+  setBadgeText(input: { tabId?: number; text: string }): Promise<void> | void;
+  setBadgeBackgroundColor(input: {
+    color: string;
+    tabId?: number;
+  }): Promise<void> | void;
 }
 
 export async function setActionStatus(
   action: ActionApi = chrome.action,
-  status: ActionStatus
+  status: ActionStatus,
+  tabId?: number
 ): Promise<void> {
   const details = {
     error: { color: "#dc2626", text: "!" },
@@ -16,8 +20,14 @@ export async function setActionStatus(
     success: { color: "#16a34a", text: "OK" }
   } satisfies Record<ActionStatus, { color: string; text: string }>;
 
-  await action.setBadgeText({ text: details[status].text });
-  await action.setBadgeBackgroundColor({ color: details[status].color });
+  await action.setBadgeText({
+    ...(tabId === undefined ? {} : { tabId }),
+    text: details[status].text
+  });
+  await action.setBadgeBackgroundColor({
+    color: details[status].color,
+    ...(tabId === undefined ? {} : { tabId })
+  });
 }
 
 export async function updateQueueBadge(

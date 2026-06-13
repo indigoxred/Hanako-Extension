@@ -32,14 +32,26 @@ describe("action status", () => {
       ["setBadgeBackgroundColor", { color: "#dc2626" }]
     ]);
   });
+
+  it("can scope action status badges to one browser tab", async () => {
+    const calls: unknown[] = [];
+    const action = createActionRecorder(calls);
+
+    await setActionStatus(action, "running", 7);
+
+    expect(calls).toEqual([
+      ["setBadgeText", { tabId: 7, text: "..." }],
+      ["setBadgeBackgroundColor", { color: "#7c3aed", tabId: 7 }]
+    ]);
+  });
 });
 
 function createActionRecorder(calls: unknown[]) {
   return {
-    async setBadgeBackgroundColor(input: { color: string }) {
+    async setBadgeBackgroundColor(input: { color: string; tabId?: number }) {
       calls.push(["setBadgeBackgroundColor", input]);
     },
-    async setBadgeText(input: { text: string }) {
+    async setBadgeText(input: { tabId?: number; text: string }) {
       calls.push(["setBadgeText", input]);
     }
   };
