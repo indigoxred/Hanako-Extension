@@ -43,9 +43,19 @@ export interface GlossaryScopesResponse {
   scopes: GlossaryScope[];
 }
 
+export interface SettingsProfileSummary {
+  id: string;
+  name: string;
+}
+
+export interface SettingsProfilesResponse {
+  profiles: SettingsProfileSummary[];
+}
+
 export interface ExtensionGlossarySelection {
   autoGlossaryStorageScopeId?: string | null;
   glossaryScopeIds?: string[];
+  profileId?: string | null;
 }
 
 export interface TranslateImageInput extends ExtensionHanakoClientOptions {
@@ -53,6 +63,7 @@ export interface TranslateImageInput extends ExtensionHanakoClientOptions {
   glossaryScopeIds?: string[];
   image: ExtensionImageCandidate;
   mode?: "auto" | "review";
+  profileId?: string | null;
   targetLanguage: string;
 }
 
@@ -61,12 +72,15 @@ export interface TranslatePageInput extends ExtensionHanakoClientOptions {
   glossaryScopeIds?: string[];
   images: ExtensionImageCandidate[];
   mode?: "auto" | "review";
+  profileId?: string | null;
   targetLanguage: string;
 }
 
 export interface GetGlossaryScopesInput extends ExtensionHanakoClientOptions {
   targetLanguage?: string;
 }
+
+export type GetSettingsProfilesInput = ExtensionHanakoClientOptions;
 
 export async function checkHanakoConnection({
   baseUrl,
@@ -101,6 +115,23 @@ export async function getGlossaryScopes({
   return (await response.json()) as GlossaryScopesResponse;
 }
 
+export async function getSettingsProfiles({
+  baseUrl,
+  fetch: fetcher = browserFetch
+}: GetSettingsProfilesInput): Promise<SettingsProfilesResponse> {
+  const response = await fetcher(
+    `${normalizeBaseUrl(baseUrl)}/api/settings/profiles`
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Hanako settings profiles request failed with ${response.status}`
+    );
+  }
+
+  return (await response.json()) as SettingsProfilesResponse;
+}
+
 export async function translateImage({
   autoGlossaryStorageScopeId,
   baseUrl,
@@ -108,6 +139,7 @@ export async function translateImage({
   glossaryScopeIds,
   image,
   mode = "auto",
+  profileId,
   targetLanguage
 }: TranslateImageInput): Promise<ExtensionJobDetail> {
   return postExtensionJob({
@@ -115,7 +147,8 @@ export async function translateImage({
     body: {
       ...glossarySelectionPayload({
         autoGlossaryStorageScopeId,
-        glossaryScopeIds
+        glossaryScopeIds,
+        profileId
       }),
       image: toUploadImage(image),
       mode,
@@ -133,6 +166,7 @@ export async function translatePage({
   glossaryScopeIds,
   images,
   mode = "auto",
+  profileId,
   targetLanguage
 }: TranslatePageInput): Promise<ExtensionJobDetail> {
   return postExtensionJob({
@@ -140,7 +174,8 @@ export async function translatePage({
     body: {
       ...glossarySelectionPayload({
         autoGlossaryStorageScopeId,
-        glossaryScopeIds
+        glossaryScopeIds,
+        profileId
       }),
       images: images.map(toUploadImage),
       mode,
@@ -174,10 +209,12 @@ function glossarySelectionPayload(
   const autoGlossaryStorageScopeId = stringOrNull(
     selection.autoGlossaryStorageScopeId
   );
+  const profileId = stringOrNull(selection.profileId);
 
   return {
     ...(autoGlossaryStorageScopeId ? { autoGlossaryStorageScopeId } : {}),
-    ...(glossaryScopeIds.length > 0 ? { glossaryScopeIds } : {})
+    ...(glossaryScopeIds.length > 0 ? { glossaryScopeIds } : {}),
+    ...(profileId ? { profileId } : {})
   };
 }
 

@@ -137,6 +137,7 @@ export async function sendQueuedImages({
       ...(item.width === undefined ? {} : { width: item.width })
     })),
     mode: "auto",
+    profileId: settings.profileId,
     targetLanguage: settings.targetLanguage
   });
 

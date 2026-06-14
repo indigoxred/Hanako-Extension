@@ -189,6 +189,7 @@ export async function translateContextMenuImage({
     baseUrl: settings.hanakoBaseUrl,
     glossaryScopeIds: settings.glossaryScopeIds,
     image: uploadImage,
+    profileId: settings.profileId,
     targetLanguage: settings.targetLanguage
   });
   const initialJobPhase = describeJobPhase({

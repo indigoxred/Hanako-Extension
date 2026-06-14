@@ -2,6 +2,7 @@ export interface ExtensionSettings {
   autoGlossaryStorageScopeId?: string | null;
   glossaryScopeIds?: string[];
   hanakoBaseUrl: string;
+  profileId?: string | null;
   queueContextMenusEnabled?: boolean;
   targetLanguage: string;
 }
@@ -23,6 +24,7 @@ export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   autoGlossaryStorageScopeId: null,
   glossaryScopeIds: [],
   hanakoBaseUrl: "http://localhost:8787",
+  profileId: null,
   queueContextMenusEnabled: true,
   targetLanguage: "en"
 };
@@ -39,6 +41,7 @@ export async function loadExtensionSettings(
       stored.hanakoBaseUrl,
       DEFAULT_EXTENSION_SETTINGS.hanakoBaseUrl
     ),
+    profileId: stringOrNull(stored.profileId),
     queueContextMenusEnabled: booleanOrDefault(
       stored.queueContextMenusEnabled,
       DEFAULT_EXTENSION_SETTINGS.queueContextMenusEnabled ?? true
@@ -66,6 +69,7 @@ export async function saveExtensionSettings(
     ),
     glossaryScopeIds: arrayOfStrings(settings.glossaryScopeIds),
     hanakoBaseUrl: validated.value,
+    profileId: stringOrNull(settings.profileId),
     queueContextMenusEnabled: settings.queueContextMenusEnabled !== false,
     targetLanguage:
       settings.targetLanguage.trim() ||

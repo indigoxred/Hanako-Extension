@@ -32,6 +32,7 @@ describe("queue flow", () => {
         autoGlossaryStorageScopeId: "scope_new",
         glossaryScopeIds: ["scope_1"],
         hanakoBaseUrl: "http://localhost:8787",
+        profileId: "profile_1",
         targetLanguage: "en"
       }),
       storage
@@ -180,6 +181,7 @@ describe("queue flow", () => {
         autoGlossaryStorageScopeId: "scope_new",
         glossaryScopeIds: ["scope_1"],
         hanakoBaseUrl: "http://localhost:8787",
+        profileId: "profile_1",
         targetLanguage: "en"
       }),
       storage,
@@ -189,6 +191,7 @@ describe("queue flow", () => {
           baseUrl: "http://localhost:8787",
           glossaryScopeIds: ["scope_1"],
           mode: "auto",
+          profileId: "profile_1",
           targetLanguage: "en"
         });
         expect(input.images.map((image) => image.bytesBase64)).toEqual([

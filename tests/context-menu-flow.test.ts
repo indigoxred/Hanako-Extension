@@ -41,10 +41,12 @@ describe("context menu translation flow", () => {
         autoGlossaryStorageScopeId: "scope_new",
         glossaryScopeIds: ["scope_1"],
         hanakoBaseUrl: "http://localhost:8787",
+        profileId: "profile_1",
         targetLanguage: "en"
       }),
       replaceImage: async () => ({ ok: true, replaced: 1 }),
       translateImage: async (input) => {
+        expect(input.profileId).toBe("profile_1");
         expect(input.image).toMatchObject({
           bytesBase64: "Y2FwdHVyZWQtcG5n",
           mediaType: "image/png",

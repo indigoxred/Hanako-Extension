@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkHanakoConnection,
   getGlossaryScopes,
+  getSettingsProfiles,
   translateImage,
   translatePage
 } from "../src/background/hanako-client.js";
@@ -45,6 +46,24 @@ describe("Hanako extension client", () => {
 
     expect(scopes).toEqual({
       scopes: [{ id: "scope_1", name: "Main", parentId: null }]
+    });
+  });
+
+  it("fetches Hanako settings profiles", async () => {
+    const profiles = await getSettingsProfiles({
+      baseUrl: "http://hanako.test/",
+      fetch: async (input) => {
+        expect(input).toBe("http://hanako.test/api/settings/profiles");
+        return new Response(
+          JSON.stringify({
+            profiles: [{ id: "profile_1", name: "Profile One" }]
+          })
+        );
+      }
+    });
+
+    expect(profiles).toEqual({
+      profiles: [{ id: "profile_1", name: "Profile One" }]
     });
   });
 
@@ -186,6 +205,7 @@ describe("Hanako extension client", () => {
             width: 800
           },
           mode: "auto",
+          profileId: "profile_1",
           targetLanguage: "en"
         });
         return new Response(JSON.stringify({ job: { id: "job_1" } }), {
@@ -202,6 +222,7 @@ describe("Hanako extension client", () => {
         url: "https://manga.example/page-1.png",
         width: 800
       },
+      profileId: "profile_1",
       targetLanguage: "en"
     });
 
@@ -226,6 +247,7 @@ describe("Hanako extension client", () => {
             }
           ],
           mode: "auto",
+          profileId: "profile_2",
           targetLanguage: "ja"
         });
         return new Response(JSON.stringify({ job: { id: "job_2" } }), {
@@ -245,6 +267,7 @@ describe("Hanako extension client", () => {
       ],
       autoGlossaryStorageScopeId: null,
       glossaryScopeIds: [],
+      profileId: "profile_2",
       targetLanguage: "ja"
     });
 

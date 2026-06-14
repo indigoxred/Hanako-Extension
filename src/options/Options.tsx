@@ -3,7 +3,9 @@ import { createRoot } from "react-dom/client";
 
 import {
   getGlossaryScopes,
-  type GlossaryScope
+  getSettingsProfiles,
+  type GlossaryScope,
+  type SettingsProfileSummary
 } from "../background/hanako-client.js";
 import {
   DEFAULT_EXTENSION_SETTINGS,
@@ -19,6 +21,8 @@ function OptionsApp() {
   );
   const [glossaryScopes, setGlossaryScopes] = useState<GlossaryScope[]>([]);
   const [glossaryStatus, setGlossaryStatus] = useState("");
+  const [profiles, setProfiles] = useState<SettingsProfileSummary[]>([]);
+  const [profileStatus, setProfileStatus] = useState("");
   const [status, setStatus] = useState("Loading");
 
   useEffect(() => {
@@ -31,6 +35,48 @@ function OptionsApp() {
         setStatus(error instanceof Error ? error.message : "Load failed")
       );
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!settings.hanakoBaseUrl.trim()) {
+      setProfiles([]);
+      return;
+    }
+
+    setProfileStatus("Loading profiles");
+    void getSettingsProfiles({ baseUrl: settings.hanakoBaseUrl })
+      .then(({ profiles }) => {
+        if (cancelled) {
+          return;
+        }
+
+        const profileIds = new Set(profiles.map((profile) => profile.id));
+        setProfiles(profiles);
+        setProfileStatus("");
+        setSettings((current) => ({
+          ...current,
+          profileId:
+            current.profileId && profileIds.has(current.profileId)
+              ? current.profileId
+              : null
+        }));
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setProfiles([]);
+        setProfileStatus(
+          error instanceof Error ? error.message : "Profiles unavailable"
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.hanakoBaseUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +152,26 @@ function OptionsApp() {
             }
           />
         </label>
+        <label>
+          Hanako profile
+          <select
+            value={settings.profileId ?? ""}
+            onChange={(event) =>
+              setSettings((current) => ({
+                ...current,
+                profileId: event.target.value || null
+              }))
+            }
+          >
+            <option value="">Default settings</option>
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {profileStatus ? <p role="status">{profileStatus}</p> : null}
         <label>
           Target language
           <input

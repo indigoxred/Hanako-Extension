@@ -13,6 +13,15 @@ describe("options UI", () => {
     expect(source).toContain("None (Disabled)");
   });
 
+  it("loads and renders Hanako profile selection", async () => {
+    const source = await readFile(resolve("src/options/Options.tsx"), "utf8");
+
+    expect(source).toContain("getSettingsProfiles");
+    expect(source).toContain("Hanako profile");
+    expect(source).toContain("Default settings");
+    expect(source).toContain("profileId");
+  });
+
   it("clears glossary selections when target language changes", async () => {
     const source = await readFile(resolve("src/options/Options.tsx"), "utf8");
 

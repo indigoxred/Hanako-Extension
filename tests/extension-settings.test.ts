@@ -16,6 +16,7 @@ describe("extension settings", () => {
       autoGlossaryStorageScopeId: null,
       glossaryScopeIds: [],
       hanakoBaseUrl: "http://localhost:8787",
+      profileId: null,
       queueContextMenusEnabled: true,
       targetLanguage: "en"
     });
@@ -24,6 +25,7 @@ describe("extension settings", () => {
       autoGlossaryStorageScopeId: " scope_new ",
       glossaryScopeIds: [" scope_1 ", "", "scope_1", "scope_2"],
       hanakoBaseUrl: "http://tower.local:8787",
+      profileId: " profile_1 ",
       queueContextMenusEnabled: false,
       targetLanguage: "ja"
     });
@@ -32,6 +34,7 @@ describe("extension settings", () => {
       autoGlossaryStorageScopeId: "scope_new",
       glossaryScopeIds: ["scope_1", "scope_2"],
       hanakoBaseUrl: "http://tower.local:8787",
+      profileId: "profile_1",
       queueContextMenusEnabled: false,
       targetLanguage: "ja"
     });
@@ -74,6 +77,7 @@ describe("extension settings", () => {
       autoGlossaryStorageScopeId: null,
       glossaryScopeIds: [],
       hanakoBaseUrl: "http://192.168.50.138:8787",
+      profileId: null,
       queueContextMenusEnabled: false,
       targetLanguage: "ja"
     });
@@ -83,6 +87,7 @@ describe("extension settings", () => {
         autoGlossaryStorageScopeId: "scope_new",
         glossaryScopeIds: ["scope_1"],
         hanakoBaseUrl: "http://192.168.50.138",
+        profileId: "profile_1",
         queueContextMenusEnabled: true,
         targetLanguage: "ko"
       })
@@ -92,6 +97,7 @@ describe("extension settings", () => {
       autoGlossaryStorageScopeId: null,
       glossaryScopeIds: [],
       hanakoBaseUrl: "http://192.168.50.138:8787",
+      profileId: null,
       queueContextMenusEnabled: false,
       targetLanguage: "ja"
     });

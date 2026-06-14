@@ -12,6 +12,7 @@ describe("extension translate flow", () => {
         autoGlossaryStorageScopeId: "scope_new",
         glossaryScopeIds: ["scope_1"],
         hanakoBaseUrl: "http://localhost:8787/",
+        profileId: "profile_1",
         targetLanguage: "ja"
       }),
       openTab: async (url) => {
@@ -62,6 +63,7 @@ describe("extension translate flow", () => {
               width: 800
             }
           ],
+          profileId: "profile_1",
           targetLanguage: "ja"
         });
         return { job: { id: "job_1" } };

@@ -131,6 +131,7 @@ export async function translateActiveTab(
     baseUrl: settings.hanakoBaseUrl,
     glossaryScopeIds: settings.glossaryScopeIds,
     images: uploadImages,
+    profileId: settings.profileId,
     targetLanguage: settings.targetLanguage
   });
   await trackActiveJob({
