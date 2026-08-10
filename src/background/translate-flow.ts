@@ -1,6 +1,7 @@
 import {
   clearBrowserActiveExtensionJob,
   attemptRenderedPageDelivery,
+  RENDERED_PAGE_DELIVERY_FAILED_MESSAGE,
   trackBrowserActiveExtensionJob,
   type TrackActiveExtensionJobInput,
   type ReplaceImagesMessageInput,
@@ -139,8 +140,7 @@ export async function translateActiveTab(
 
   const completed = await waitForJobCompletion({
     baseUrl: settings.hanakoBaseUrl,
-    jobId: detail.job.id,
-    requiredRenderedPages: uploadImages.length
+    jobId: detail.job.id
   });
 
   if (completed.status === "failed") {
@@ -154,6 +154,16 @@ export async function translateActiveTab(
   }
 
   if (completed.status === "timeout") {
+    if (completed.detail.job.status === "completed") {
+      await clearActiveJob({ jobId: detail.job.id, tabId: tab.id });
+      return {
+        error: RENDERED_PAGE_DELIVERY_FAILED_MESSAGE,
+        jobId: detail.job.id,
+        ok: false,
+        status: "failed"
+      };
+    }
+
     return {
       imageCount: images.length,
       jobId: detail.job.id,
@@ -163,23 +173,32 @@ export async function translateActiveTab(
     };
   }
 
-  const delivery = await attemptRenderedPageDelivery(
-    activeJob,
-    completed.detail,
-    {
-      clearActiveJob: () =>
-        clearActiveJob({ jobId: detail.job.id, tabId: activeTabId }),
+  let delivery: Awaited<ReturnType<typeof attemptRenderedPageDelivery>>;
+
+  try {
+    delivery = await attemptRenderedPageDelivery(activeJob, completed.detail, {
       executeContentScript,
       sendReplaceImagesMessage
-    }
-  );
+    });
+  } finally {
+    await clearActiveJob({ jobId: detail.job.id, tabId: activeTabId });
+  }
+
+  if (!delivery.delivered) {
+    return {
+      error: RENDERED_PAGE_DELIVERY_FAILED_MESSAGE,
+      jobId: detail.job.id,
+      ok: false,
+      status: "failed"
+    };
+  }
 
   return {
     imageCount: uploadImages.length,
     jobId: detail.job.id,
     ok: true,
     replacementCount: delivery.replacementCount,
-    status: delivery.delivered ? "completed" : "timeout"
+    status: "completed"
   };
 }
 

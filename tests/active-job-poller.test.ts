@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  clearActiveExtensionJob,
   getActiveExtensionJobs,
   pollActiveExtensionJobsOnce,
   trackActiveExtensionJob
@@ -9,9 +8,11 @@ import {
 
 function createStorage() {
   const values: Record<string, unknown> = {};
+  const writes: Array<Record<string, unknown>> = [];
 
   return {
     values,
+    writes,
     async get(keys: string[] | Record<string, unknown>) {
       if (Array.isArray(keys)) {
         return Object.fromEntries(keys.map((key) => [key, values[key]]));
@@ -25,6 +26,7 @@ function createStorage() {
       );
     },
     async set(items: Record<string, unknown>) {
+      writes.push(structuredClone(items));
       Object.assign(values, items);
     }
   };
@@ -103,7 +105,7 @@ describe("active extension job poller", () => {
       tabId: 7
     });
 
-    await clearActiveExtensionJob(storage, "7:job_1");
+    await expect(getActiveExtensionJobs(storage)).resolves.toHaveLength(0);
     await expect(
       pollActiveExtensionJobsOnce({
         pollJobOnce: async () => {
@@ -117,6 +119,7 @@ describe("active extension job poller", () => {
   it("stores the latest Hanako progress phase while the job is still running", async () => {
     const storage = createStorage();
     const states: unknown[] = [];
+    let pollRequests = 0;
 
     await trackActiveExtensionJob(storage, {
       baseUrl: "http://hanako.test",
@@ -125,27 +128,36 @@ describe("active extension job poller", () => {
       replacements: [{ domIndex: 0 }],
       tabId: 7
     });
+    const storedBeforePoll = await getActiveExtensionJobs(storage);
 
-    await pollActiveExtensionJobsOnce({
-      pollJobOnce: async () => ({
-        job: { id: "job_1", status: "running" },
-        progress: [
-          {
-            createdAt: "2026-06-07T00:00:01.000Z",
-            label: "Detect/OCR",
-            message: "Detecting text regions and running OCR",
-            status: "started",
-            step: "detect_ocr"
-          }
-        ]
-      }),
-      setTabJobState: async (tabId, state) => {
-        states.push({ state, tabId });
-        return { ...state, updatedAt: "now" };
-      },
-      storage
-    });
+    const poll = () =>
+      pollActiveExtensionJobsOnce({
+        pollJobOnce: async () => {
+          pollRequests += 1;
+          return {
+            job: { id: "job_1", status: "running" },
+            progress: [
+              {
+                createdAt: "2026-06-07T00:00:01.000Z",
+                label: "Detect/OCR",
+                message: "Detecting text regions and running OCR",
+                status: "started",
+                step: "detect_ocr"
+              }
+            ]
+          };
+        },
+        setTabJobState: async (tabId, state) => {
+          states.push({ state, tabId });
+          return { ...state, updatedAt: "now" };
+        },
+        storage
+      });
 
+    await poll();
+    await poll();
+
+    expect(pollRequests).toBe(2);
     expect(states.at(-1)).toEqual({
       state: {
         jobId: "job_1",
@@ -155,136 +167,15 @@ describe("active extension job poller", () => {
       },
       tabId: 7
     });
+    await expect(getActiveExtensionJobs(storage)).resolves.toEqual(
+      storedBeforePoll
+    );
   });
 
-  it("keeps polling completed active jobs until rendered page metadata appears", async () => {
+  it("clears a completed job without rendered metadata and does not poll it again", async () => {
     const storage = createStorage();
-    const replacements: unknown[] = [];
     const states: unknown[] = [];
-    const responses = [
-      {
-        job: { id: "job_1", status: "completed" },
-        pages: [{ id: "page_1" }]
-      },
-      {
-        job: { id: "job_1", status: "completed" },
-        pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
-      }
-    ];
-
-    await trackActiveExtensionJob(storage, {
-      baseUrl: "http://hanako.test",
-      imageCount: 1,
-      jobId: "job_1",
-      replacements: [
-        {
-          domId: "hanako-img-1",
-          domIndex: 0,
-          sourceUrl: "https://manga.example/page-1.png"
-        }
-      ],
-      tabId: 7
-    });
-
-    await pollActiveExtensionJobsOnce({
-      executeContentScript: async () => {
-        throw new Error("Should not replace before rendered page metadata");
-      },
-      pollJobOnce: async () => responses.shift()!,
-      sendReplaceImagesMessage: async () => {
-        throw new Error("Should not replace before rendered page metadata");
-      },
-      setTabJobState: async (tabId, state) => {
-        states.push({ state, tabId });
-        return { ...state, updatedAt: "now" };
-      },
-      storage
-    });
-
-    expect(states.at(-1)).toEqual({
-      state: {
-        jobId: "job_1",
-        message: "Waiting for Hanako rendered pages",
-        phase: "render_pages",
-        status: "running"
-      },
-      tabId: 7
-    });
-
-    await pollActiveExtensionJobsOnce({
-      executeContentScript: async () => undefined,
-      pollJobOnce: async () => responses.shift()!,
-      sendReplaceImagesMessage: async (tabId, input) => {
-        replacements.push({ input, tabId });
-        return { applied: input.replacements.length, failed: 0, ok: true };
-      },
-      setTabJobState: async (tabId, state) => {
-        states.push({ state, tabId });
-        return { ...state, updatedAt: "now" };
-      },
-      storage
-    });
-
-    expect(replacements).toEqual([
-      {
-        input: {
-          replacements: [
-            {
-              domId: "hanako-img-1",
-              domIndex: 0,
-              renderedUrl:
-                "http://hanako.test/api/jobs/job_1/pages/page_1/rendered",
-              sourceUrl: "https://manga.example/page-1.png"
-            }
-          ]
-        },
-        tabId: 7
-      }
-    ]);
-  });
-  it.each([
-    ["partial", { applied: 1, failed: 0, ok: true }],
-    ["zero", { applied: 0, failed: 0, ok: true }]
-  ])(
-    "keeps the active job when delivery acknowledgement is %s",
-    async (_label, response) => {
-      const storage = createStorage();
-
-      await trackActiveExtensionJob(storage, {
-        baseUrl: "http://hanako.test",
-        imageCount: 2,
-        jobId: "job_1",
-        replacements: [{ domIndex: 0 }, { domIndex: 1 }],
-        tabId: 7
-      });
-
-      await pollActiveExtensionJobsOnce({
-        executeContentScript: async () => undefined,
-        pollJobOnce: async () => ({
-          job: { id: "job_1", status: "completed" },
-          pages: [
-            { id: "page_1", renderedAssetId: "asset_1" },
-            { id: "page_2", renderedAssetId: "asset_2" }
-          ]
-        }),
-        sendReplaceImagesMessage: async () => response,
-        setTabJobState: async (_tabId, state) => ({
-          ...state,
-          updatedAt: "now"
-        }),
-        storage
-      });
-
-      await expect(getActiveExtensionJobs(storage)).resolves.toHaveLength(1);
-    }
-  );
-
-  it("removes a retained job after a subsequent alarm retry is fully acknowledged", async () => {
-    const storage = createStorage();
-    const responses = [
-      { applied: 0, failed: 1, ok: false },
-      { applied: 1, failed: 0, ok: true }
-    ];
+    let pollRequests = 0;
 
     await trackActiveExtensionJob(storage, {
       baseUrl: "http://hanako.test",
@@ -296,12 +187,92 @@ describe("active extension job poller", () => {
 
     const poll = () =>
       pollActiveExtensionJobsOnce({
+        executeContentScript: async () => {
+          throw new Error("Should not replace without rendered metadata");
+        },
+        pollJobOnce: async () => {
+          pollRequests += 1;
+          return {
+            job: { id: "job_1", status: "completed" },
+            pages: [{ id: "page_1" }]
+          };
+        },
+        sendReplaceImagesMessage: async () => {
+          throw new Error("Should not replace without rendered metadata");
+        },
+        setTabJobState: async (tabId, state) => {
+          states.push({ state, tabId });
+          return { ...state, updatedAt: "now" };
+        },
+        storage
+      });
+
+    await poll();
+    await poll();
+
+    expect(pollRequests).toBe(1);
+    await expect(getActiveExtensionJobs(storage)).resolves.toHaveLength(0);
+    expect(states.at(-1)).toEqual({
+      state: {
+        jobId: "job_1",
+        message:
+          "Translation completed, but the rendered image could not be applied",
+        phase: "failed",
+        status: "failed"
+      },
+      tabId: 7
+    });
+  });
+
+  it.each([
+    ["partial", { applied: 1, failed: 0, ok: true }],
+    ["zero", { applied: 0, failed: 0, ok: true }],
+    ["errored", new Error("content script unavailable")]
+  ])(
+    "clears a completed job when delivery acknowledgement is %s",
+    async (_label, response) => {
+      const storage = createStorage();
+      const states: unknown[] = [];
+      let pollRequests = 0;
+
+      await trackActiveExtensionJob(storage, {
+        baseUrl: "http://hanako.test",
+        imageCount: 2,
+        jobId: "job_1",
+        replacements: [{ domIndex: 0 }, { domIndex: 1 }],
+        tabId: 7
+      });
+
+      await pollActiveExtensionJobsOnce({
         executeContentScript: async () => undefined,
-        pollJobOnce: async () => ({
-          job: { id: "job_1", status: "completed" },
-          pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
-        }),
-        sendReplaceImagesMessage: async () => responses.shift()!,
+        pollJobOnce: async () => {
+          pollRequests += 1;
+          return {
+            job: { id: "job_1", status: "completed" },
+            pages: [
+              { id: "page_1", renderedAssetId: "asset_1" },
+              { id: "page_2", renderedAssetId: "asset_2" }
+            ]
+          };
+        },
+        sendReplaceImagesMessage: async () => {
+          if (response instanceof Error) {
+            throw response;
+          }
+          return response;
+        },
+        setTabJobState: async (tabId, state) => {
+          states.push({ state, tabId });
+          return { ...state, updatedAt: "now" };
+        },
+        storage
+      });
+
+      await pollActiveExtensionJobsOnce({
+        pollJobOnce: async () => {
+          pollRequests += 1;
+          throw new Error("Terminal job should not be polled again");
+        },
         setTabJobState: async (_tabId, state) => ({
           ...state,
           updatedAt: "now"
@@ -309,11 +280,49 @@ describe("active extension job poller", () => {
         storage
       });
 
-    await poll();
-    await expect(getActiveExtensionJobs(storage)).resolves.toHaveLength(1);
+      expect(pollRequests).toBe(1);
+      await expect(getActiveExtensionJobs(storage)).resolves.toHaveLength(0);
+      expect(states.at(-1)).toEqual({
+        state: {
+          jobId: "job_1",
+          message:
+            "Translation completed, but the rendered image could not be applied",
+          phase: "failed",
+          status: "failed"
+        },
+        tabId: 7
+      });
+    }
+  );
 
-    await poll();
-    await expect(getActiveExtensionJobs(storage)).resolves.toHaveLength(0);
+  it("leaves a genuinely active job untouched after a temporary server error", async () => {
+    const storage = createStorage();
+
+    await trackActiveExtensionJob(storage, {
+      baseUrl: "http://hanako.test",
+      imageCount: 1,
+      jobId: "job_1",
+      replacements: [{ domIndex: 0 }],
+      tabId: 7
+    });
+    const storedBeforePoll = await getActiveExtensionJobs(storage);
+    const writesBeforePoll = storage.writes.length;
+
+    await pollActiveExtensionJobsOnce({
+      pollJobOnce: async () => {
+        throw new Error("temporary server failure");
+      },
+      setTabJobState: async (_tabId, state) => ({
+        ...state,
+        updatedAt: "now"
+      }),
+      storage
+    });
+
+    await expect(getActiveExtensionJobs(storage)).resolves.toEqual(
+      storedBeforePoll
+    );
+    expect(storage.writes).toHaveLength(writesBeforePoll);
   });
 
   it("does not let an overlapping failed poll recreate a delivered job", async () => {

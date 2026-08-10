@@ -42,7 +42,6 @@ export interface WaitForJobCompletionInput extends PollJobInput {
     phase: ExtensionJobPhaseDescription,
     detail: ExtensionJobPollDetail
   ) => Promise<void> | void;
-  requiredRenderedPages?: number;
 }
 
 export type WaitForJobCompletionResult =
@@ -82,17 +81,14 @@ export async function waitForJobCompletion({
   fetch: fetcher = browserFetch,
   jobId,
   maxAttempts = 60,
-  onProgress,
-  requiredRenderedPages = 0
+  onProgress
 }: WaitForJobCompletionInput): Promise<WaitForJobCompletionResult> {
   let latest = await pollJobOnce({ baseUrl, fetch: fetcher, jobId });
   await onProgress?.(describeJobPhase(latest), latest);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     if (latest.job.status === "completed") {
-      if (hasRequiredRenderedPages(latest, requiredRenderedPages)) {
-        return { detail: latest, status: "completed" };
-      }
+      return { detail: latest, status: "completed" };
     }
 
     if (latest.job.status === "failed" || latest.job.status === "cancelled") {
@@ -130,20 +126,6 @@ export function describeJobPhase(
     message: `Hanako job is ${humanizeIdentifier(status)}`,
     phase: status
   };
-}
-
-function hasRequiredRenderedPages(
-  detail: ExtensionJobPollDetail,
-  requiredRenderedPages: number
-): boolean {
-  if (requiredRenderedPages <= 0) {
-    return true;
-  }
-
-  return (
-    (detail.pages ?? []).filter((page) => Boolean(page.renderedAssetId))
-      .length >= requiredRenderedPages
-  );
 }
 
 function latestProgressEvent(
