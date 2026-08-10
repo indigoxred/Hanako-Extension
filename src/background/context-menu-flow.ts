@@ -227,8 +227,7 @@ export async function translateContextMenuImage({
         message: phase.message,
         phase: phase.phase
       });
-    },
-    requiredRenderedPages: 1
+    }
   });
 
   if (completed.status === "failed") {

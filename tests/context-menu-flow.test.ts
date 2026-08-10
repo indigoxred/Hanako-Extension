@@ -150,7 +150,7 @@ describe("context menu translation flow", () => {
     ]);
   });
 
-  it("asks the job poller to wait for the rendered page before replacing a clicked image", async () => {
+  it("asks the job poller to wait for completion before replacing a clicked image", async () => {
     const waitInputs: unknown[] = [];
 
     await translateContextMenuImage({
@@ -181,11 +181,11 @@ describe("context menu translation flow", () => {
     });
 
     expect(waitInputs).toEqual([
-      expect.objectContaining({
+      {
         baseUrl: "http://localhost:8787",
         jobId: "job_1",
-        requiredRenderedPages: 1
-      })
+        onProgress: expect.any(Function)
+      }
     ]);
   });
 
