@@ -1,6 +1,7 @@
 import {
   clearBrowserActiveExtensionJob,
   attemptRenderedPageDelivery,
+  RENDERED_PAGE_DELIVERY_FAILED_MESSAGE,
   trackBrowserActiveExtensionJob,
   type TrackActiveExtensionJobInput,
   type ReplaceImagesResponse
@@ -246,6 +247,21 @@ export async function translateContextMenuImage({
   }
 
   if (completed.status === "timeout") {
+    if (completed.detail.job.status === "completed") {
+      await clearActiveJob({ jobId: detail.job.id, tabId: sourceTabId });
+      await emitPhase(onPhase, {
+        jobId: detail.job.id,
+        message: RENDERED_PAGE_DELIVERY_FAILED_MESSAGE,
+        phase: "failed"
+      });
+      return {
+        error: RENDERED_PAGE_DELIVERY_FAILED_MESSAGE,
+        jobId: detail.job.id,
+        ok: false,
+        status: "failed"
+      };
+    }
+
     await emitPhase(onPhase, {
       jobId: detail.job.id,
       message: "Hanako job is still processing",
@@ -265,18 +281,20 @@ export async function translateContextMenuImage({
     message: "Replacing rendered image",
     phase: "replacing-image"
   });
-  const delivery = await attemptRenderedPageDelivery(
-    activeJob,
-    completed.detail,
-    {
-      clearActiveJob: () =>
-        clearActiveJob({ jobId: detail.job.id, tabId: sourceTabId }),
+  let delivery: Awaited<ReturnType<typeof attemptRenderedPageDelivery>>;
+
+  try {
+    delivery = await attemptRenderedPageDelivery(activeJob, completed.detail, {
       executeContentScript: async () => undefined,
       sendReplaceImagesMessage: async (tabId, input) => {
         const replacement = input.replacements[0];
 
         if (!replacement?.sourceUrl) {
-          return { applied: 0, failed: input.replacements.length, ok: false };
+          return {
+            applied: 0,
+            failed: input.replacements.length,
+            ok: false
+          };
         }
 
         return replaceImage(tabId, {
@@ -284,21 +302,22 @@ export async function translateContextMenuImage({
           sourceUrl: replacement.sourceUrl
         });
       }
-    }
-  );
+    });
+  } finally {
+    await clearActiveJob({ jobId: detail.job.id, tabId: sourceTabId });
+  }
 
   if (!delivery.delivered) {
     await emitPhase(onPhase, {
       jobId: detail.job.id,
-      message: "Rendered image delivery will retry",
-      phase: "timeout"
+      message: RENDERED_PAGE_DELIVERY_FAILED_MESSAGE,
+      phase: "failed"
     });
     return {
+      error: RENDERED_PAGE_DELIVERY_FAILED_MESSAGE,
       jobId: detail.job.id,
-      ok: true,
-      replacementCount: 0,
-      status: "timeout",
-      ...(image.warning ? { warning: image.warning } : {})
+      ok: false,
+      status: "failed"
     };
   }
 

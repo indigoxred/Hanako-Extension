@@ -13,6 +13,8 @@ import {
 
 export const ACTIVE_EXTENSION_JOB_ALARM_NAME = "hanako-active-job-poll";
 export const ACTIVE_EXTENSION_JOB_POLL_PERIOD_MINUTES = 0.5;
+export const RENDERED_PAGE_DELIVERY_FAILED_MESSAGE =
+  "Translation completed, but the rendered image could not be applied";
 
 const ACTIVE_EXTENSION_JOBS_STORAGE_KEY = "hanakoActiveExtensionJobs";
 
@@ -52,7 +54,6 @@ export interface ReplaceImagesResponse {
 
 export interface PollActiveExtensionJobsDependencies {
   executeContentScript?: (tabId: number) => Promise<void>;
-  now?: () => Date;
   pollJobOnce?: (input: PollJobInput) => Promise<ExtensionJobPollDetail>;
   sendReplaceImagesMessage?: (
     tabId: number,
@@ -120,7 +121,6 @@ export function createActiveExtensionJobId(
 
 export async function pollActiveExtensionJobsOnce({
   executeContentScript = defaultExecuteContentScript,
-  now = () => new Date(),
   pollJobOnce = defaultPollJobOnce,
   sendReplaceImagesMessage = defaultSendReplaceImagesMessage,
   setTabJobState = defaultSetTabJobState,
@@ -132,7 +132,6 @@ export async function pollActiveExtensionJobsOnce({
     await pollActiveExtensionJob({
       executeContentScript,
       job,
-      now,
       pollJobOnce,
       sendReplaceImagesMessage,
       setTabJobState,
@@ -196,7 +195,6 @@ export async function syncActiveExtensionJobPollingAlarm(
 async function pollActiveExtensionJob(input: {
   executeContentScript: (tabId: number) => Promise<void>;
   job: ActiveExtensionJob;
-  now: () => Date;
   pollJobOnce: (pollInput: PollJobInput) => Promise<ExtensionJobPollDetail>;
   sendReplaceImagesMessage: (
     tabId: number,
@@ -217,11 +215,6 @@ async function pollActiveExtensionJob(input: {
       jobId: job.jobId
     });
   } catch {
-    await updateActiveJob(input.storage, {
-      ...job,
-      pollAttempts: job.pollAttempts + 1,
-      updatedAt: input.now().toISOString()
-    });
     await input.setTabJobState(job.tabId, {
       jobId: job.jobId,
       message: "Waiting for Hanako job",
@@ -244,11 +237,6 @@ async function pollActiveExtensionJob(input: {
 
   if (detail.job.status !== "completed") {
     const phase = describeJobPhase(detail);
-    await updateActiveJob(input.storage, {
-      ...job,
-      pollAttempts: job.pollAttempts + 1,
-      updatedAt: input.now().toISOString()
-    });
     await input.setTabJobState(job.tabId, {
       jobId: job.jobId,
       message: phase.message,
@@ -258,50 +246,32 @@ async function pollActiveExtensionJob(input: {
     return;
   }
 
-  if (!hasExpectedRenderedPages(job, detail)) {
-    const phase = describeJobPhase(detail);
-    await updateActiveJob(input.storage, {
-      ...job,
-      pollAttempts: job.pollAttempts + 1,
-      updatedAt: input.now().toISOString()
-    });
-    await input.setTabJobState(job.tabId, {
-      jobId: job.jobId,
-      message: "Waiting for Hanako rendered pages",
-      phase: phase.phase === "completed" ? "render_pages" : phase.phase,
-      status: "running"
-    });
-    return;
-  }
+  let delivery: Awaited<ReturnType<typeof attemptRenderedPageDelivery>>;
 
-  const delivery = await attemptRenderedPageDelivery(job, detail, {
-    clearActiveJob: () => clearActiveExtensionJob(input.storage, job.id),
-    executeContentScript: input.executeContentScript,
-    sendReplaceImagesMessage: input.sendReplaceImagesMessage
-  });
+  try {
+    delivery = await attemptRenderedPageDelivery(job, detail, {
+      executeContentScript: input.executeContentScript,
+      sendReplaceImagesMessage: input.sendReplaceImagesMessage
+    });
+  } finally {
+    await clearActiveExtensionJob(input.storage, job.id);
+  }
 
   if (delivery.delivered) {
     await input.setTabJobState(job.tabId, {
       jobId: job.jobId,
-      message: `Replaced ${delivery.replacementCount} image${
-        delivery.replacementCount === 1 ? "" : "s"
-      }`,
+      message: `Replaced ${delivery.replacementCount} image${delivery.replacementCount === 1 ? "" : "s"}`,
       phase: "completed",
       status: "completed"
     });
     return;
   }
 
-  await updateActiveJob(input.storage, {
-    ...job,
-    pollAttempts: job.pollAttempts + 1,
-    updatedAt: input.now().toISOString()
-  });
   await input.setTabJobState(job.tabId, {
     jobId: job.jobId,
-    message: "Waiting to apply translated images",
-    phase: "replacing-image",
-    status: "running"
+    message: RENDERED_PAGE_DELIVERY_FAILED_MESSAGE,
+    phase: "failed",
+    status: "failed"
   });
 }
 
@@ -309,7 +279,6 @@ export async function attemptRenderedPageDelivery(
   job: TrackActiveExtensionJobInput,
   detail: ExtensionJobPollDetail,
   dependencies: {
-    clearActiveJob: () => Promise<void>;
     executeContentScript: (tabId: number) => Promise<void>;
     sendReplaceImagesMessage: (
       tabId: number,
@@ -345,18 +314,7 @@ export async function attemptRenderedPageDelivery(
     return { delivered: false, replacementCount: 0 };
   }
 
-  await dependencies.clearActiveJob();
   return { delivered: true, replacementCount: response.applied };
-}
-
-function hasExpectedRenderedPages(
-  job: ActiveExtensionJob,
-  detail: ExtensionJobPollDetail
-): boolean {
-  return (
-    (detail.pages ?? []).filter((page) => Boolean(page.renderedAssetId))
-      .length >= job.replacements.length
-  );
 }
 
 function buildReplacementInstructions(
@@ -396,20 +354,6 @@ async function getActiveExtensionJobMap(
   return typeof value === "object" && value !== null
     ? (value as Record<string, ActiveExtensionJob>)
     : {};
-}
-
-async function updateActiveJob(
-  storage: JobStateStorageArea,
-  job: ActiveExtensionJob
-): Promise<void> {
-  const all = await getActiveExtensionJobMap(storage);
-
-  if (!all[job.id]) {
-    return;
-  }
-  await storage.set({
-    [ACTIVE_EXTENSION_JOBS_STORAGE_KEY]: { ...all, [job.id]: job }
-  });
 }
 
 async function defaultExecuteContentScript(tabId: number): Promise<void> {

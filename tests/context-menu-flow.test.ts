@@ -799,7 +799,89 @@ describe("context menu translation flow", () => {
       type: "HANAKO_SCROLL_IMAGE_INTO_VIEW"
     });
   });
-  it("retains the context-menu job when direct delivery is not fully acknowledged", async () => {
+  it("retains the context-menu job when polling times out in a non-terminal state", async () => {
+    let cleared = false;
+    const result = await translateContextMenuImage({
+      captureImageBytes: async () => ({
+        bytesBase64: "cGFnZQ==",
+        domIndex: 0,
+        mediaType: "image/png"
+      }),
+      clearActiveJob: async () => {
+        cleared = true;
+      },
+      context: {
+        srcUrl: "https://manga.example/page.png",
+        tabId: 12
+      },
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      replaceImage: async () => {
+        throw new Error("Should not deliver a running job");
+      },
+      trackActiveJob: async () => undefined,
+      translateImage: async () => ({ job: { id: "job_1" } }),
+      waitForJobCompletion: async () => ({
+        detail: { job: { id: "job_1", status: "running" } },
+        status: "timeout"
+      })
+    });
+
+    expect(result).toEqual({
+      jobId: "job_1",
+      ok: true,
+      replacementCount: 0,
+      status: "timeout"
+    });
+    expect(cleared).toBe(false);
+  });
+
+  it("clears and fails a context-menu job that completed without rendered metadata", async () => {
+    let cleared = false;
+    const result = await translateContextMenuImage({
+      captureImageBytes: async () => ({
+        bytesBase64: "cGFnZQ==",
+        domIndex: 0,
+        mediaType: "image/png"
+      }),
+      clearActiveJob: async () => {
+        cleared = true;
+      },
+      context: {
+        srcUrl: "https://manga.example/page.png",
+        tabId: 12
+      },
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      replaceImage: async () => {
+        throw new Error("Should not deliver without rendered metadata");
+      },
+      trackActiveJob: async () => undefined,
+      translateImage: async () => ({ job: { id: "job_1" } }),
+      waitForJobCompletion: async () => ({
+        detail: {
+          job: { id: "job_1", status: "completed" },
+          pages: [{ id: "page_1" }]
+        },
+        status: "timeout"
+      })
+    });
+
+    expect(result).toEqual({
+      error:
+        "Translation completed, but the rendered image could not be applied",
+      jobId: "job_1",
+      ok: false,
+      status: "failed"
+    });
+    expect(cleared).toBe(true);
+  });
+
+  it("clears and fails the context-menu job when final delivery is not acknowledged", async () => {
     let cleared = false;
     const result = await translateContextMenuImage({
       captureImageBytes: async () => ({
@@ -835,11 +917,12 @@ describe("context menu translation flow", () => {
     });
 
     expect(result).toEqual({
+      error:
+        "Translation completed, but the rendered image could not be applied",
       jobId: "job_1",
-      ok: true,
-      replacementCount: 0,
-      status: "timeout"
+      ok: false,
+      status: "failed"
     });
-    expect(cleared).toBe(false);
+    expect(cleared).toBe(true);
   });
 });

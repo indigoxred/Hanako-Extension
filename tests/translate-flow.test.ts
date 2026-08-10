@@ -118,8 +118,12 @@ describe("extension translate flow", () => {
     ]);
   });
 
-  it("returns a timeout result when the job does not complete before polling ends", async () => {
+  it("retains the active-tab job when polling times out in a non-terminal state", async () => {
+    let cleared = false;
     const result = await translateActiveTab({
+      clearActiveJob: async () => {
+        cleared = true;
+      },
       executeContentScript: async () => undefined,
       loadSettings: async () => ({
         hanakoBaseUrl: "http://localhost:8787",
@@ -154,6 +158,51 @@ describe("extension translate flow", () => {
       replacementCount: 0,
       status: "timeout"
     });
+    expect(cleared).toBe(false);
+  });
+
+  it("clears and fails an active-tab job that completed without rendered metadata", async () => {
+    let cleared = false;
+    const result = await translateActiveTab({
+      clearActiveJob: async () => {
+        cleared = true;
+      },
+      executeContentScript: async () => undefined,
+      fetchImageBytes: async () => ({
+        bytesBase64: "cGFnZQ==",
+        mediaType: "image/png"
+      }),
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      queryActiveTab: async () => ({ id: 7 }),
+      sendDetectImagesMessage: async () => ({
+        images: [{ domIndex: 0, url: "https://manga.example/page.png" }],
+        ok: true
+      }),
+      sendReplaceImagesMessage: async () => {
+        throw new Error("Should not deliver without rendered metadata");
+      },
+      trackActiveJob: async () => undefined,
+      translatePage: async () => ({ job: { id: "job_1" } }),
+      waitForJobCompletion: async () => ({
+        detail: {
+          job: { id: "job_1", status: "completed" },
+          pages: [{ id: "page_1" }]
+        },
+        status: "timeout"
+      })
+    });
+
+    expect(result).toEqual({
+      error:
+        "Translation completed, but the rendered image could not be applied",
+      jobId: "job_1",
+      ok: false,
+      status: "failed"
+    });
+    expect(cleared).toBe(true);
   });
 
   it("returns a failure when the job fails while polling", async () => {
@@ -323,7 +372,7 @@ describe("extension translate flow", () => {
       ok: false
     });
   });
-  it("retains the active-tab job when direct delivery is not fully acknowledged", async () => {
+  it("clears and fails the active-tab job when final delivery is not acknowledged", async () => {
     let cleared = false;
     const result = await translateActiveTab({
       clearActiveJob: async () => {
@@ -360,12 +409,12 @@ describe("extension translate flow", () => {
     });
 
     expect(result).toEqual({
-      imageCount: 1,
+      error:
+        "Translation completed, but the rendered image could not be applied",
       jobId: "job_1",
-      ok: true,
-      replacementCount: 0,
-      status: "timeout"
+      ok: false,
+      status: "failed"
     });
-    expect(cleared).toBe(false);
+    expect(cleared).toBe(true);
   });
 });
