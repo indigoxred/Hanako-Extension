@@ -44,7 +44,7 @@ describe("context menu translation flow", () => {
         profileId: "profile_1",
         targetLanguage: "en"
       }),
-      replaceImage: async () => ({ ok: true, replaced: 1 }),
+      replaceImage: async () => ({ applied: 1, failed: 0, ok: true }),
       translateImage: async (input) => {
         expect(input.profileId).toBe("profile_1");
         expect(input.image).toMatchObject({
@@ -103,7 +103,7 @@ describe("context menu translation flow", () => {
       },
       replaceImage: async (tabId, replacement) => {
         replacements.push({ replacement, tabId });
-        return { ok: true, replaced: 1 };
+        return { applied: 1, failed: 0, ok: true };
       },
       translateImage: async (input) => {
         expect(input).toMatchObject({
@@ -166,7 +166,7 @@ describe("context menu translation flow", () => {
         hanakoBaseUrl: "http://localhost:8787",
         targetLanguage: "en"
       }),
-      replaceImage: async () => ({ ok: true, replaced: 1 }),
+      replaceImage: async () => ({ applied: 1, failed: 0, ok: true }),
       translateImage: async () => ({ job: { id: "job_1" } }),
       waitForJobCompletion: async (input) => {
         waitInputs.push(input);
@@ -208,7 +208,7 @@ describe("context menu translation flow", () => {
       onPhase: async (phase) => {
         phases.push(phase);
       },
-      replaceImage: async () => ({ ok: true, replaced: 1 }),
+      replaceImage: async () => ({ applied: 1, failed: 0, ok: true }),
       translateImage: async () => ({ job: { id: "job_1" } }),
       waitForJobCompletion: async (input) => {
         await input.onProgress?.(
@@ -287,7 +287,7 @@ describe("context menu translation flow", () => {
         hanakoBaseUrl: "http://localhost:8787",
         targetLanguage: "en"
       }),
-      replaceImage: async () => ({ ok: true, replaced: 1 }),
+      replaceImage: async () => ({ applied: 1, failed: 0, ok: true }),
       translateImage: async (input) => {
         translatedImages.push(input.image);
         return { job: { id: "job_1" } };
@@ -354,7 +354,7 @@ describe("context menu translation flow", () => {
         hanakoBaseUrl: "http://localhost:8787",
         targetLanguage: "en"
       }),
-      replaceImage: async () => ({ ok: true, replaced: 1 }),
+      replaceImage: async () => ({ applied: 1, failed: 0, ok: true }),
       translateImage: async (input) => {
         translatedImages.push(input.image);
         return { job: { id: "job_1" } };
@@ -415,7 +415,7 @@ describe("context menu translation flow", () => {
       onPhase: async (phase) => {
         phases.push(phase);
       },
-      replaceImage: async () => ({ ok: true, replaced: 1 }),
+      replaceImage: async () => ({ applied: 1, failed: 0, ok: true }),
       translateImage: async (input) => {
         uploadedImages.push(input.image);
         return { job: { id: "job_1" } };
@@ -798,5 +798,48 @@ describe("context menu translation flow", () => {
       sourceUrl: "https://manga.example/page.png",
       type: "HANAKO_SCROLL_IMAGE_INTO_VIEW"
     });
+  });
+  it("retains the context-menu job when direct delivery is not fully acknowledged", async () => {
+    let cleared = false;
+    const result = await translateContextMenuImage({
+      captureImageBytes: async () => ({
+        bytesBase64: "cGFnZQ==",
+        domIndex: 0,
+        mediaType: "image/png"
+      }),
+      clearActiveJob: async () => {
+        cleared = true;
+      },
+      context: {
+        srcUrl: "https://manga.example/page.png",
+        tabId: 12
+      },
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      replaceImage: async () => ({
+        applied: 0,
+        failed: 1,
+        ok: false
+      }),
+      trackActiveJob: async () => undefined,
+      translateImage: async () => ({ job: { id: "job_1" } }),
+      waitForJobCompletion: async () => ({
+        detail: {
+          job: { id: "job_1", status: "completed" },
+          pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+        },
+        status: "completed"
+      })
+    });
+
+    expect(result).toEqual({
+      jobId: "job_1",
+      ok: true,
+      replacementCount: 0,
+      status: "timeout"
+    });
+    expect(cleared).toBe(false);
   });
 });

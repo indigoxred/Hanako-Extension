@@ -17,10 +17,19 @@ let replacementObserver: MutationObserver | undefined;
 chrome.runtime.onMessage.addListener(
   (message: unknown, _sender, sendResponse) => {
     if (isReplaceImagesMessage(message)) {
-      const result = replaceDetectedImages(message.replacements);
       replacementObserver ??= observeReplacementMutations();
-      showOverlay(`Replaced ${result.replaced} translated images`);
-      sendResponse({ ok: true, ...result });
+      void replaceDetectedImages(message.replacements)
+        .then((result) => {
+          showOverlay(`Applied ${result.applied} translated images`);
+          sendResponse({ ok: result.failed === 0, ...result });
+        })
+        .catch(() => {
+          sendResponse({
+            applied: 0,
+            failed: message.replacements.length,
+            ok: false
+          });
+        });
       return true;
     }
 

@@ -1,20 +1,141 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   clearDetectedImageReplacements,
   reapplyStoredReplacements,
   replaceDetectedImages
 } from "../src/content/dom-replacer.js";
+function acknowledgeRenderedImages(documentRef: Document): void {
+  for (const image of Array.from(documentRef.querySelectorAll("img"))) {
+    Object.defineProperty(image, "decode", {
+      configurable: true,
+      value: vi.fn().mockResolvedValue(undefined)
+    });
+    image.dispatchEvent(new Event("load"));
+  }
+}
 
 describe("content DOM replacer", () => {
-  it("replaces detected image sources by DOM index", () => {
+  it("reports failed delivery when the rendered image emits an error", async () => {
+    const documentRef = document.implementation.createHTMLDocument();
+    documentRef.body.innerHTML = `
+      <img src="https://manga.example/page-1.png" />
+    `;
+    const image = documentRef.querySelector("img")!;
+    Object.defineProperty(image, "decode", {
+      configurable: true,
+      value: vi.fn().mockResolvedValue(undefined)
+    });
+
+    const resultPromise = Promise.resolve(
+      replaceDetectedImages(
+        [
+          {
+            domIndex: 0,
+            renderedUrl: "http://hanako.test/rendered.png"
+          }
+        ],
+        documentRef
+      )
+    );
+    image.dispatchEvent(new Event("error"));
+
+    await expect(resultPromise).resolves.toEqual({ applied: 0, failed: 1 });
+  });
+
+  it("acknowledges delivery after the rendered image loads and decodes", async () => {
+    const documentRef = document.implementation.createHTMLDocument();
+    documentRef.body.innerHTML = `
+      <img src="https://manga.example/page-1.png" />
+    `;
+    const image = documentRef.querySelector("img")!;
+    const decode = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(image, "decode", {
+      configurable: true,
+      value: decode
+    });
+
+    const resultPromise = Promise.resolve(
+      replaceDetectedImages(
+        [
+          {
+            domIndex: 0,
+            renderedUrl: "http://hanako.test/rendered.png"
+          }
+        ],
+        documentRef
+      )
+    );
+    image.dispatchEvent(new Event("load"));
+
+    await expect(resultPromise).resolves.toEqual({ applied: 1, failed: 0 });
+    expect(decode).toHaveBeenCalledOnce();
+  });
+
+  it("reports failed delivery when image decoding rejects", async () => {
+    const documentRef = document.implementation.createHTMLDocument();
+    documentRef.body.innerHTML = `
+      <img src="https://manga.example/page-1.png" />
+    `;
+    const image = documentRef.querySelector("img")!;
+    Object.defineProperty(image, "decode", {
+      configurable: true,
+      value: vi.fn().mockRejectedValue(new Error("decode failed"))
+    });
+
+    const resultPromise = replaceDetectedImages(
+      [
+        {
+          domIndex: 0,
+          renderedUrl: "http://hanako.test/rendered.png"
+        }
+      ],
+      documentRef
+    );
+    image.dispatchEvent(new Event("load"));
+
+    await expect(resultPromise).resolves.toEqual({ applied: 0, failed: 1 });
+  });
+
+  it("times out a rendered image that never loads", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const documentRef = document.implementation.createHTMLDocument();
+      documentRef.body.innerHTML = `
+        <img src="https://manga.example/page-1.png" />
+      `;
+      const image = documentRef.querySelector("img")!;
+      Object.defineProperty(image, "decode", {
+        configurable: true,
+        value: vi.fn().mockResolvedValue(undefined)
+      });
+
+      const resultPromise = replaceDetectedImages(
+        [
+          {
+            domIndex: 0,
+            renderedUrl: "http://hanako.test/rendered.png"
+          }
+        ],
+        documentRef
+      );
+      await vi.advanceTimersByTimeAsync(15_000);
+
+      await expect(resultPromise).resolves.toEqual({ applied: 0, failed: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("replaces detected image sources by DOM index", async () => {
     const documentRef = document.implementation.createHTMLDocument();
     documentRef.body.innerHTML = `
       <img src="https://manga.example/page-1.png" width="800" height="1200" />
       <img src="https://manga.example/page-2.png" width="800" height="1200" />
     `;
 
-    const result = replaceDetectedImages(
+    const resultPromise = replaceDetectedImages(
       [
         {
           domIndex: 1,
@@ -23,9 +144,11 @@ describe("content DOM replacer", () => {
       ],
       documentRef
     );
+    acknowledgeRenderedImages(documentRef);
+    const result = await resultPromise;
     const images = Array.from(documentRef.querySelectorAll("img"));
 
-    expect(result).toEqual({ replaced: 1 });
+    expect(result).toEqual({ applied: 1, failed: 0 });
     expect(images[0]?.getAttribute("src")).toBe(
       "https://manga.example/page-1.png"
     );
@@ -40,7 +163,7 @@ describe("content DOM replacer", () => {
     );
   });
 
-  it("prefers stable Hanako DOM IDs and disables competing responsive sources", () => {
+  it("prefers stable Hanako DOM IDs and disables competing responsive sources", async () => {
     const documentRef = document.implementation.createHTMLDocument();
     documentRef.body.innerHTML = `
       <picture>
@@ -56,7 +179,7 @@ describe("content DOM replacer", () => {
       <img data-hanako-dom-id="hanako-img-2" src="https://manga.example/page-2.png" width="800" height="1200" />
     `;
 
-    const result = replaceDetectedImages(
+    const resultPromise = replaceDetectedImages(
       [
         {
           domId: "hanako-img-2",
@@ -66,9 +189,11 @@ describe("content DOM replacer", () => {
       ],
       documentRef
     );
+    acknowledgeRenderedImages(documentRef);
+    const result = await resultPromise;
     const images = Array.from(documentRef.querySelectorAll("img"));
 
-    expect(result).toEqual({ replaced: 1 });
+    expect(result).toEqual({ applied: 1, failed: 0 });
     expect(images[0]?.getAttribute("src")).toBe(
       "https://manga.example/page-1.png"
     );
@@ -80,7 +205,7 @@ describe("content DOM replacer", () => {
     );
   });
 
-  it("updates X-style visual background image layers that sit beside the img", () => {
+  it("updates X-style visual background image layers that sit beside the img", async () => {
     const documentRef = document.implementation.createHTMLDocument();
     documentRef.body.innerHTML = `
       <div aria-label="Image">
@@ -97,7 +222,7 @@ describe("content DOM replacer", () => {
       </div>
     `;
 
-    const result = replaceDetectedImages(
+    const resultPromise = replaceDetectedImages(
       [
         {
           domId: "hanako-context-img-0",
@@ -108,13 +233,15 @@ describe("content DOM replacer", () => {
       ],
       documentRef
     );
+    acknowledgeRenderedImages(documentRef);
+    const result = await resultPromise;
 
     const visualLayer = documentRef.querySelector<HTMLElement>(
       "[data-testid='x-visual-layer']"
     );
     const image = documentRef.querySelector("img");
 
-    expect(result).toEqual({ replaced: 1 });
+    expect(result).toEqual({ applied: 1, failed: 0 });
     expect(image?.getAttribute("src")).toBe("http://hanako.test/rendered.png");
     expect(visualLayer?.style.backgroundImage).toContain(
       "http://hanako.test/rendered.png"
@@ -145,7 +272,7 @@ describe("content DOM replacer", () => {
     ).toBeNull();
   });
 
-  it("keeps an explicit visual replacement layer on X-style media containers", () => {
+  it("keeps an explicit visual replacement layer on X-style media containers", async () => {
     const documentRef = document.implementation.createHTMLDocument();
     documentRef.body.innerHTML = `
       <div aria-label="Image" style="position: relative;">
@@ -162,7 +289,7 @@ describe("content DOM replacer", () => {
       </div>
     `;
 
-    replaceDetectedImages(
+    const resultPromise = replaceDetectedImages(
       [
         {
           domId: "hanako-context-img-0",
@@ -172,6 +299,8 @@ describe("content DOM replacer", () => {
       ],
       documentRef
     );
+    acknowledgeRenderedImages(documentRef);
+    await resultPromise;
 
     const overlay = documentRef.querySelector<HTMLImageElement>(
       "[data-hanako-visual-replacement]"
@@ -225,24 +354,24 @@ describe("content DOM replacer", () => {
     expect(image?.getAttribute("src")).toBe("http://hanako.test/rendered.png");
   });
 
-  it("ignores replacement instructions for missing DOM indexes", () => {
+  it("ignores replacement instructions for missing DOM indexes", async () => {
     const documentRef = document.implementation.createHTMLDocument();
     documentRef.body.innerHTML = `
       <img src="https://manga.example/page-1.png" width="800" height="1200" />
     `;
 
-    const result = replaceDetectedImages(
+    const result = await replaceDetectedImages(
       [{ domIndex: 3, renderedUrl: "http://hanako.test/rendered.png" }],
       documentRef
     );
 
-    expect(result).toEqual({ replaced: 0 });
+    expect(result).toEqual({ applied: 0, failed: 1 });
     expect(documentRef.querySelector("img")?.getAttribute("src")).toBe(
       "https://manga.example/page-1.png"
     );
   });
 
-  it("restores original image sources and picture sources", () => {
+  it("restores original image sources and picture sources", async () => {
     const documentRef = document.implementation.createHTMLDocument();
     documentRef.body.innerHTML = `
       <picture>
@@ -254,10 +383,12 @@ describe("content DOM replacer", () => {
       </picture>
     `;
 
-    replaceDetectedImages(
+    const resultPromise = replaceDetectedImages(
       [{ domIndex: 0, renderedUrl: "http://localhost:8787/rendered.png" }],
       documentRef
     );
+    acknowledgeRenderedImages(documentRef);
+    await resultPromise;
 
     expect(clearDetectedImageReplacements(documentRef)).toEqual({
       restored: 1

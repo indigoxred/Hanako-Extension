@@ -5,6 +5,11 @@ export interface ImageReplacement {
   sourceUrl?: string;
 }
 
+export interface ImageDeliveryResult {
+  applied: number;
+  failed: number;
+}
+
 export interface ImageReplacementResult {
   replaced: number;
 }
@@ -13,49 +18,92 @@ export interface ImageRestoreResult {
   restored: number;
 }
 
-export function replaceDetectedImages(
+export async function replaceDetectedImages(
   replacements: ImageReplacement[],
   documentRef: Document = document
-): ImageReplacementResult {
+): Promise<ImageDeliveryResult> {
   const images = Array.from(documentRef.querySelectorAll("img"));
-  let replaced = 0;
+  const results = await Promise.all(
+    replacements.map(async (replacement) => {
+      const image = findReplacementTarget(images, replacement);
 
-  for (const replacement of replacements) {
-    const image = findReplacementTarget(images, replacement);
+      if (!image) {
+        return false;
+      }
 
-    if (!image) {
-      continue;
-    }
-
-    const sourceCandidates = getImageSourceCandidates(image, replacement);
-    const imageAlreadyApplied = isRenderedImageApplied(
-      image,
-      replacement.renderedUrl
-    );
-    const currentSrc =
-      image.currentSrc || image.src || image.getAttribute("src") || "";
-    image.dataset.hanakoOriginalSrc =
-      image.dataset.hanakoOriginalSrc || currentSrc;
-    image.dataset.hanakoOriginalSrcset =
-      image.dataset.hanakoOriginalSrcset || image.getAttribute("srcset") || "";
-    image.dataset.hanakoRenderedSrc = replacement.renderedUrl;
-    const backgroundChanged = applyVisualBackgroundLayers(image, {
-      renderedUrl: replacement.renderedUrl,
-      sourceCandidates
-    });
-
-    if (!imageAlreadyApplied) {
-      image.removeAttribute("srcset");
+      const sourceCandidates = getImageSourceCandidates(image, replacement);
+      const currentSrc =
+        image.currentSrc || image.src || image.getAttribute("src") || "";
+      image.dataset.hanakoOriginalSrc =
+        image.dataset.hanakoOriginalSrc || currentSrc;
+      image.dataset.hanakoOriginalSrcset =
+        image.dataset.hanakoOriginalSrcset ||
+        image.getAttribute("srcset") ||
+        "";
+      image.dataset.hanakoRenderedSrc = replacement.renderedUrl;
+      applyVisualBackgroundLayers(image, {
+        renderedUrl: replacement.renderedUrl,
+        sourceCandidates
+      });
       disablePictureSources(image);
-      image.src = replacement.renderedUrl;
-    }
 
-    if (!imageAlreadyApplied || backgroundChanged) {
-      replaced += 1;
-    }
+      return applyRenderedImage(image, replacement.renderedUrl);
+    })
+  );
+  const applied = results.filter(Boolean).length;
+
+  return {
+    applied,
+    failed: replacements.length - applied
+  };
+}
+
+async function applyRenderedImage(
+  image: HTMLImageElement,
+  renderedUrl: string
+): Promise<boolean> {
+  image.removeAttribute("srcset");
+  image.src = renderedUrl;
+
+  try {
+    await waitForImageLoad(image);
+    await image.decode();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function waitForImageLoad(
+  image: HTMLImageElement,
+  timeoutMs = 15_000
+): Promise<void> {
+  if (image.complete && image.naturalWidth > 0) {
+    return Promise.resolve();
   }
 
-  return { replaced };
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new Error("Rendered image load timed out"));
+    }, timeoutMs);
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      image.removeEventListener("load", handleLoad);
+      image.removeEventListener("error", handleError);
+    };
+    const handleLoad = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error("Rendered image failed to load"));
+    };
+
+    image.addEventListener("load", handleLoad, { once: true });
+    image.addEventListener("error", handleError, { once: true });
+  });
 }
 
 export function reapplyStoredReplacements(

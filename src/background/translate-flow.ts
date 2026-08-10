@@ -1,7 +1,10 @@
 import {
   clearBrowserActiveExtensionJob,
+  attemptRenderedPageDelivery,
   trackBrowserActiveExtensionJob,
-  type TrackActiveExtensionJobInput
+  type TrackActiveExtensionJobInput,
+  type ReplaceImagesMessageInput,
+  type ReplaceImagesResponse
 } from "./active-job-poller.js";
 import {
   translatePage as defaultTranslatePage,
@@ -10,7 +13,6 @@ import {
   type TranslatePageInput
 } from "./hanako-client.js";
 import {
-  createRenderedPageUrl,
   waitForJobCompletion as defaultWaitForJobCompletion,
   type WaitForJobCompletionInput,
   type WaitForJobCompletionResult
@@ -37,19 +39,6 @@ export type TranslateActiveTabResult =
       status: "completed" | "timeout";
     }
   | { ok: false; error: string; jobId?: string; status?: "failed" };
-
-export interface ReplaceImagesMessageInput {
-  replacements: Array<{
-    domIndex?: number;
-    domId?: string;
-    renderedUrl: string;
-  }>;
-}
-
-export interface ReplaceImagesResponse {
-  ok: boolean;
-  replaced: number;
-}
 
 export interface TranslateActiveTabDependencies {
   executeContentScript?: (tabId: number) => Promise<void>;
@@ -95,6 +84,7 @@ export async function translateActiveTab(
   if (!tab.id) {
     return { error: "No active tab was available", ok: false };
   }
+  const activeTabId = tab.id;
 
   await dependencies.onTabResolved?.(tab.id);
   await executeContentScript(tab.id);
@@ -134,7 +124,7 @@ export async function translateActiveTab(
     profileId: settings.profileId,
     targetLanguage: settings.targetLanguage
   });
-  await trackActiveJob({
+  const activeJob: TrackActiveExtensionJobInput = {
     baseUrl: settings.hanakoBaseUrl,
     imageCount: uploadImages.length,
     jobId: detail.job.id,
@@ -144,7 +134,8 @@ export async function translateActiveTab(
       ...(image.url ? { sourceUrl: image.url } : {})
     })),
     tabId: tab.id
-  });
+  };
+  await trackActiveJob(activeJob);
 
   const completed = await waitForJobCompletion({
     baseUrl: settings.hanakoBaseUrl,
@@ -172,21 +163,23 @@ export async function translateActiveTab(
     };
   }
 
-  const replacements = buildReplacementInstructions({
-    baseUrl: settings.hanakoBaseUrl,
-    images: uploadImages,
-    jobId: detail.job.id,
-    pages: completed.detail.pages ?? []
-  });
-  const replaced = await sendReplaceImagesMessage(tab.id, { replacements });
-  await clearActiveJob({ jobId: detail.job.id, tabId: tab.id });
+  const delivery = await attemptRenderedPageDelivery(
+    activeJob,
+    completed.detail,
+    {
+      clearActiveJob: () =>
+        clearActiveJob({ jobId: detail.job.id, tabId: activeTabId }),
+      executeContentScript,
+      sendReplaceImagesMessage
+    }
+  );
 
   return {
     imageCount: uploadImages.length,
     jobId: detail.job.id,
     ok: true,
-    replacementCount: replaced.replaced,
-    status: "completed"
+    replacementCount: delivery.replacementCount,
+    status: delivery.delivered ? "completed" : "timeout"
   };
 }
 
@@ -206,36 +199,6 @@ async function resolveUploadImages(
   }
 
   return uploadImages;
-}
-
-function buildReplacementInstructions(input: {
-  baseUrl: string;
-  images: ExtensionImageCandidate[];
-  jobId: string;
-  pages: Array<{ id: string; renderedAssetId?: string }>;
-}): ReplaceImagesMessageInput["replacements"] {
-  return input.images.flatMap((image, index) => {
-    const page = input.pages[index];
-
-    if (
-      !page?.renderedAssetId ||
-      (image.domIndex === undefined && !image.domId)
-    ) {
-      return [];
-    }
-
-    return [
-      {
-        ...(image.domIndex === undefined ? {} : { domIndex: image.domIndex }),
-        ...(image.domId ? { domId: image.domId } : {}),
-        renderedUrl: createRenderedPageUrl({
-          baseUrl: input.baseUrl,
-          jobId: input.jobId,
-          pageId: page.id
-        })
-      }
-    ];
-  });
 }
 
 async function defaultQueryActiveTab(): Promise<{ id?: number }> {
