@@ -44,6 +44,11 @@ export interface ReplaceImagesMessageInput {
     }
   >;
 }
+export interface ReplaceImagesResponse {
+  applied: number;
+  failed: number;
+  ok: boolean;
+}
 
 export interface PollActiveExtensionJobsDependencies {
   executeContentScript?: (tabId: number) => Promise<void>;
@@ -52,7 +57,7 @@ export interface PollActiveExtensionJobsDependencies {
   sendReplaceImagesMessage?: (
     tabId: number,
     input: ReplaceImagesMessageInput
-  ) => Promise<{ ok: boolean; replaced: number }>;
+  ) => Promise<ReplaceImagesResponse>;
   setTabJobState?: (
     tabId: number,
     state: Omit<StoredJobState, "updatedAt">
@@ -196,7 +201,7 @@ async function pollActiveExtensionJob(input: {
   sendReplaceImagesMessage: (
     tabId: number,
     replacementInput: ReplaceImagesMessageInput
-  ) => Promise<{ ok: boolean; replaced: number }>;
+  ) => Promise<ReplaceImagesResponse>;
   setTabJobState: (
     tabId: number,
     state: Omit<StoredJobState, "updatedAt">
@@ -253,25 +258,6 @@ async function pollActiveExtensionJob(input: {
     return;
   }
 
-  const replacements = buildReplacementInstructions(job, detail);
-
-  if (replacements.length > 0) {
-    await input.executeContentScript(job.tabId);
-    const replaced = await input.sendReplaceImagesMessage(job.tabId, {
-      replacements
-    });
-    await clearActiveExtensionJob(input.storage, job.id);
-    await input.setTabJobState(job.tabId, {
-      jobId: job.jobId,
-      message: `Replaced ${replaced.replaced} image${
-        replaced.replaced === 1 ? "" : "s"
-      }`,
-      phase: "completed",
-      status: "completed"
-    });
-    return;
-  }
-
   if (!hasExpectedRenderedPages(job, detail)) {
     const phase = describeJobPhase(detail);
     await updateActiveJob(input.storage, {
@@ -288,13 +274,79 @@ async function pollActiveExtensionJob(input: {
     return;
   }
 
-  await clearActiveExtensionJob(input.storage, job.id);
+  const delivery = await attemptRenderedPageDelivery(job, detail, {
+    clearActiveJob: () => clearActiveExtensionJob(input.storage, job.id),
+    executeContentScript: input.executeContentScript,
+    sendReplaceImagesMessage: input.sendReplaceImagesMessage
+  });
+
+  if (delivery.delivered) {
+    await input.setTabJobState(job.tabId, {
+      jobId: job.jobId,
+      message: `Replaced ${delivery.replacementCount} image${
+        delivery.replacementCount === 1 ? "" : "s"
+      }`,
+      phase: "completed",
+      status: "completed"
+    });
+    return;
+  }
+
+  await updateActiveJob(input.storage, {
+    ...job,
+    pollAttempts: job.pollAttempts + 1,
+    updatedAt: input.now().toISOString()
+  });
   await input.setTabJobState(job.tabId, {
     jobId: job.jobId,
-    message: "Hanako job completed without rendered pages",
-    phase: "failed",
-    status: "failed"
+    message: "Waiting to apply translated images",
+    phase: "replacing-image",
+    status: "running"
   });
+}
+
+export async function attemptRenderedPageDelivery(
+  job: TrackActiveExtensionJobInput,
+  detail: ExtensionJobPollDetail,
+  dependencies: {
+    clearActiveJob: () => Promise<void>;
+    executeContentScript: (tabId: number) => Promise<void>;
+    sendReplaceImagesMessage: (
+      tabId: number,
+      input: ReplaceImagesMessageInput
+    ) => Promise<ReplaceImagesResponse>;
+  }
+): Promise<{ delivered: boolean; replacementCount: number }> {
+  const replacements = buildReplacementInstructions(job, detail);
+
+  if (
+    replacements.length === 0 ||
+    replacements.length !== job.replacements.length
+  ) {
+    return { delivered: false, replacementCount: 0 };
+  }
+
+  let response: ReplaceImagesResponse;
+
+  try {
+    await dependencies.executeContentScript(job.tabId);
+    response = await dependencies.sendReplaceImagesMessage(job.tabId, {
+      replacements
+    });
+  } catch {
+    return { delivered: false, replacementCount: 0 };
+  }
+
+  if (
+    !response.ok ||
+    response.applied !== replacements.length ||
+    response.failed !== 0
+  ) {
+    return { delivered: false, replacementCount: 0 };
+  }
+
+  await dependencies.clearActiveJob();
+  return { delivered: true, replacementCount: response.applied };
 }
 
 function hasExpectedRenderedPages(
@@ -308,7 +360,7 @@ function hasExpectedRenderedPages(
 }
 
 function buildReplacementInstructions(
-  job: ActiveExtensionJob,
+  job: TrackActiveExtensionJobInput,
   detail: ExtensionJobPollDetail
 ): ReplaceImagesMessageInput["replacements"] {
   return job.replacements.flatMap((target, index) => {
@@ -316,7 +368,7 @@ function buildReplacementInstructions(
 
     if (
       !page?.renderedAssetId ||
-      (target.domIndex === undefined && !target.domId)
+      (target.domIndex === undefined && !target.domId && !target.sourceUrl)
     ) {
       return [];
     }
@@ -351,6 +403,10 @@ async function updateActiveJob(
   job: ActiveExtensionJob
 ): Promise<void> {
   const all = await getActiveExtensionJobMap(storage);
+
+  if (!all[job.id]) {
+    return;
+  }
   await storage.set({
     [ACTIVE_EXTENSION_JOBS_STORAGE_KEY]: { ...all, [job.id]: job }
   });
@@ -366,11 +422,11 @@ async function defaultExecuteContentScript(tabId: number): Promise<void> {
 async function defaultSendReplaceImagesMessage(
   tabId: number,
   input: ReplaceImagesMessageInput
-): Promise<{ ok: boolean; replaced: number }> {
+): Promise<ReplaceImagesResponse> {
   return (await chrome.tabs.sendMessage(tabId, {
     ...input,
     type: "HANAKO_REPLACE_IMAGES"
-  })) as { ok: boolean; replaced: number };
+  })) as ReplaceImagesResponse;
 }
 
 async function defaultSetTabJobState(

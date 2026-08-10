@@ -83,7 +83,11 @@ describe("extension translate flow", () => {
       },
       sendReplaceImagesMessage: async (tabId, replacementInput) => {
         replacements.push({ tabId, replacementInput });
-        return { ok: true, replaced: replacementInput.replacements.length };
+        return {
+          applied: replacementInput.replacements.length,
+          failed: 0,
+          ok: true
+        };
       }
     });
 
@@ -94,7 +98,7 @@ describe("extension translate flow", () => {
       replacementCount: 1,
       status: "completed"
     });
-    expect(calls).toEqual(["script:7", "message:7"]);
+    expect(calls).toEqual(["script:7", "message:7", "script:7"]);
     expect(openedUrls).toEqual([]);
     expect(replacements).toEqual([
       {
@@ -104,7 +108,8 @@ describe("extension translate flow", () => {
               domIndex: 0,
               domId: "hanako-img-1",
               renderedUrl:
-                "http://localhost:8787/api/jobs/job_1/pages/page_1/rendered"
+                "http://localhost:8787/api/jobs/job_1/pages/page_1/rendered",
+              sourceUrl: "https://manga.example/page-1.png"
             }
           ]
         },
@@ -130,7 +135,11 @@ describe("extension translate flow", () => {
         images: [{ domIndex: 0, url: "https://manga.example/page.png" }],
         ok: true
       }),
-      sendReplaceImagesMessage: async () => ({ ok: true, replaced: 0 }),
+      sendReplaceImagesMessage: async () => ({
+        applied: 0,
+        failed: 0,
+        ok: true
+      }),
       translatePage: async () => ({ job: { id: "job_1" } }),
       waitForJobCompletion: async () => ({
         detail: { job: { id: "job_1", status: "running" } },
@@ -164,7 +173,11 @@ describe("extension translate flow", () => {
         images: [{ domIndex: 0, url: "https://manga.example/page.png" }],
         ok: true
       }),
-      sendReplaceImagesMessage: async () => ({ ok: true, replaced: 0 }),
+      sendReplaceImagesMessage: async () => ({
+        applied: 0,
+        failed: 0,
+        ok: true
+      }),
       translatePage: async () => ({ job: { id: "job_1" } }),
       waitForJobCompletion: async () => ({
         detail: {
@@ -226,8 +239,9 @@ describe("extension translate flow", () => {
         pageUrl: "https://manga.example/chapter-1"
       }),
       sendReplaceImagesMessage: async (_tabId, input) => ({
-        ok: true,
-        replaced: input.replacements.length
+        applied: input.replacements.length,
+        failed: 0,
+        ok: true
       }),
       translatePage: async (input) => {
         expect(input.images).toEqual([
@@ -308,5 +322,50 @@ describe("extension translate flow", () => {
       error: "No active tab was available",
       ok: false
     });
+  });
+  it("retains the active-tab job when direct delivery is not fully acknowledged", async () => {
+    let cleared = false;
+    const result = await translateActiveTab({
+      clearActiveJob: async () => {
+        cleared = true;
+      },
+      executeContentScript: async () => undefined,
+      fetchImageBytes: async () => ({
+        bytesBase64: "cGFnZQ==",
+        mediaType: "image/png"
+      }),
+      loadSettings: async () => ({
+        hanakoBaseUrl: "http://localhost:8787",
+        targetLanguage: "en"
+      }),
+      queryActiveTab: async () => ({ id: 7 }),
+      sendDetectImagesMessage: async () => ({
+        images: [{ domIndex: 0, url: "https://manga.example/page.png" }],
+        ok: true
+      }),
+      sendReplaceImagesMessage: async () => ({
+        applied: 0,
+        failed: 1,
+        ok: false
+      }),
+      trackActiveJob: async () => undefined,
+      translatePage: async () => ({ job: { id: "job_1" } }),
+      waitForJobCompletion: async () => ({
+        detail: {
+          job: { id: "job_1", status: "completed" },
+          pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+        },
+        status: "completed"
+      })
+    });
+
+    expect(result).toEqual({
+      imageCount: 1,
+      jobId: "job_1",
+      ok: true,
+      replacementCount: 0,
+      status: "timeout"
+    });
+    expect(cleared).toBe(false);
   });
 });

@@ -1,7 +1,9 @@
 import {
   clearBrowserActiveExtensionJob,
+  attemptRenderedPageDelivery,
   trackBrowserActiveExtensionJob,
-  type TrackActiveExtensionJobInput
+  type TrackActiveExtensionJobInput,
+  type ReplaceImagesResponse
 } from "./active-job-poller.js";
 import {
   translateImage as defaultTranslateImage,
@@ -21,7 +23,6 @@ import {
   type VisibleElementRect
 } from "./visible-tab-capture.js";
 import {
-  createRenderedPageUrl,
   describeJobPhase,
   waitForJobCompletion as defaultWaitForJobCompletion,
   type WaitForJobCompletionInput,
@@ -111,7 +112,7 @@ export interface TranslateContextMenuImageDependencies {
   replaceImage?: (
     tabId: number,
     replacement: ReplaceContextImageInput
-  ) => Promise<{ ok: boolean; replaced: number }>;
+  ) => Promise<ReplaceImagesResponse>;
   translateImage?: (input: TranslateImageInput) => Promise<ExtensionJobDetail>;
   trackActiveJob?: (input: TrackActiveExtensionJobInput) => Promise<void>;
   clearActiveJob?: (input: { jobId: string; tabId: number }) => Promise<void>;
@@ -140,6 +141,7 @@ export async function translateContextMenuImage({
   if (!context.tabId) {
     return { error: "No source tab was available", ok: false };
   }
+  const sourceTabId = context.tabId;
 
   const settings = await loadSettings();
   await emitPhase(onPhase, {
@@ -201,7 +203,7 @@ export async function translateContextMenuImage({
     message: initialJobPhase.message,
     phase: initialJobPhase.phase
   });
-  await trackActiveJob({
+  const activeJob: TrackActiveExtensionJobInput = {
     baseUrl: settings.hanakoBaseUrl,
     imageCount: 1,
     jobId: detail.job.id,
@@ -213,7 +215,8 @@ export async function translateContextMenuImage({
       }
     ],
     tabId: context.tabId
-  });
+  };
+  await trackActiveJob(activeJob);
   const completed = await waitForJobCompletion({
     baseUrl: settings.hanakoBaseUrl,
     jobId: detail.job.id,
@@ -257,38 +260,47 @@ export async function translateContextMenuImage({
     };
   }
 
-  const page = completed.detail.pages?.[0];
-
-  if (!page?.renderedAssetId) {
-    await clearActiveJob({ jobId: detail.job.id, tabId: context.tabId });
-    await emitPhase(onPhase, {
-      jobId: detail.job.id,
-      message: "Hanako job completed without a rendered page",
-      phase: "failed"
-    });
-    return {
-      error: "Hanako job completed without a rendered page",
-      jobId: detail.job.id,
-      ok: false
-    };
-  }
-
   await emitPhase(onPhase, {
     jobId: detail.job.id,
     message: "Replacing rendered image",
     phase: "replacing-image"
   });
-  const replaced = await replaceImage(context.tabId, {
-    renderedUrl: createRenderedPageUrl({
-      baseUrl: settings.hanakoBaseUrl,
+  const delivery = await attemptRenderedPageDelivery(
+    activeJob,
+    completed.detail,
+    {
+      clearActiveJob: () =>
+        clearActiveJob({ jobId: detail.job.id, tabId: sourceTabId }),
+      executeContentScript: async () => undefined,
+      sendReplaceImagesMessage: async (tabId, input) => {
+        const replacement = input.replacements[0];
+
+        if (!replacement?.sourceUrl) {
+          return { applied: 0, failed: input.replacements.length, ok: false };
+        }
+
+        return replaceImage(tabId, {
+          ...replacement,
+          sourceUrl: replacement.sourceUrl
+        });
+      }
+    }
+  );
+
+  if (!delivery.delivered) {
+    await emitPhase(onPhase, {
       jobId: detail.job.id,
-      pageId: page.id
-    }),
-    ...(image.domId ? { domId: image.domId } : {}),
-    ...(image.domIndex === undefined ? {} : { domIndex: image.domIndex }),
-    sourceUrl: context.srcUrl
-  });
-  await clearActiveJob({ jobId: detail.job.id, tabId: context.tabId });
+      message: "Rendered image delivery will retry",
+      phase: "timeout"
+    });
+    return {
+      jobId: detail.job.id,
+      ok: true,
+      replacementCount: 0,
+      status: "timeout",
+      ...(image.warning ? { warning: image.warning } : {})
+    };
+  }
 
   await emitPhase(onPhase, {
     jobId: detail.job.id,
@@ -298,7 +310,7 @@ export async function translateContextMenuImage({
   return {
     jobId: detail.job.id,
     ok: true,
-    replacementCount: replaced.replaced,
+    replacementCount: delivery.replacementCount,
     status: "completed",
     ...(image.warning ? { warning: image.warning } : {})
   };
@@ -452,7 +464,7 @@ export async function captureVisibleContextImageBytes(
 async function defaultReplaceImage(
   tabId: number,
   replacement: ReplaceContextImageInput
-): Promise<{ ok: boolean; replaced: number }> {
+): Promise<ReplaceImagesResponse> {
   await chrome.scripting.executeScript({
     files: ["content/content-entry.js"],
     target: { tabId }
@@ -461,7 +473,7 @@ async function defaultReplaceImage(
   return (await chrome.tabs.sendMessage(tabId, {
     replacements: [replacement],
     type: "HANAKO_REPLACE_IMAGES"
-  })) as { ok: boolean; replaced: number };
+  })) as ReplaceImagesResponse;
 }
 
 function compactImageCandidate(input: {
