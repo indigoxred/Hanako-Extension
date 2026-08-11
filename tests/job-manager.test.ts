@@ -1,8 +1,83 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createJobManager } from "../src/background/job-manager.js";
 
 describe("job manager", () => {
+  it("forwards the source tab ID through the default browser action adapter", async () => {
+    const calls: unknown[] = [];
+
+    vi.stubGlobal("chrome", {
+      action: {
+        async setBadgeBackgroundColor(input: {
+          color: string;
+          tabId?: number;
+        }) {
+          calls.push(["setBadgeBackgroundColor", input]);
+        },
+        async setBadgeText(input: { tabId?: number; text: string }) {
+          calls.push(["setBadgeText", input]);
+        }
+      }
+    });
+
+    try {
+      const manager = createJobManager({
+        translateActiveTab: async (input) => {
+          await input?.onTabResolved?.(7);
+          return {
+            imageCount: 1,
+            jobId: "job_1",
+            ok: true,
+            replacementCount: 1,
+            status: "completed"
+          };
+        }
+      });
+
+      await manager.translateActiveTab();
+
+      expect(calls).toEqual([
+        ["setBadgeText", { tabId: 7, text: "..." }],
+        ["setBadgeBackgroundColor", { color: "#7c3aed", tabId: 7 }],
+        ["setBadgeText", { tabId: 7, text: "OK" }],
+        ["setBadgeBackgroundColor", { color: "#16a34a", tabId: 7 }]
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not repaint running after an alarm has written a terminal badge", async () => {
+    const statuses: Array<{ status: string; tabId?: number }> = [];
+
+    const recordStatus = async (status: string, tabId?: number) => {
+      statuses.push({ status, tabId });
+    };
+
+    const manager = createJobManager({
+      setActionStatus: recordStatus,
+      translateActiveTab: async (input) => {
+        await input?.onTabResolved?.(7);
+        await recordStatus("success", 7);
+
+        return {
+          imageCount: 1,
+          jobId: "job_1",
+          ok: true,
+          replacementCount: 0,
+          status: "timeout"
+        };
+      }
+    });
+
+    await manager.translateActiveTab();
+
+    expect(statuses).toEqual([
+      { status: "running", tabId: 7 },
+      { status: "success", tabId: 7 }
+    ]);
+  });
+
   it("deduplicates an active tab translation", async () => {
     let calls = 0;
     const statuses: Array<{ status: string; tabId?: number }> = [];
@@ -80,10 +155,7 @@ describe("job manager", () => {
       })
     ).resolves.toMatchObject({ jobId: "job_1", ok: true, status: "timeout" });
 
-    expect(statuses).toEqual([
-      { status: "running", tabId: 7 },
-      { status: "running", tabId: 7 }
-    ]);
+    expect(statuses).toEqual([{ status: "running", tabId: 7 }]);
   });
 
   it("clears queue indicators after sending a queue", async () => {

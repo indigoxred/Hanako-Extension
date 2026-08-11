@@ -38,6 +38,7 @@ describe("active extension job poller", () => {
     const replacements: unknown[] = [];
     const states: unknown[] = [];
     const executedTabs: number[] = [];
+    const actionStatuses: Array<{ status: string; tabId: number }> = [];
 
     await trackActiveExtensionJob(storage, {
       baseUrl: "http://hanako.test",
@@ -70,6 +71,9 @@ describe("active extension job poller", () => {
       sendReplaceImagesMessage: async (tabId, input) => {
         replacements.push({ input, tabId });
         return { applied: input.replacements.length, failed: 0, ok: true };
+      },
+      setActionStatus: async (status, tabId) => {
+        actionStatuses.push({ status, tabId });
       },
       setTabJobState: async (tabId, state) => {
         states.push({ state, tabId });
@@ -104,6 +108,7 @@ describe("active extension job poller", () => {
       },
       tabId: 7
     });
+    expect(actionStatuses).toEqual([{ status: "success", tabId: 7 }]);
 
     await expect(getActiveExtensionJobs(storage)).resolves.toHaveLength(0);
     await expect(
@@ -175,6 +180,7 @@ describe("active extension job poller", () => {
   it("clears a completed job without rendered metadata and does not poll it again", async () => {
     const storage = createStorage();
     const states: unknown[] = [];
+    const actionStatuses: Array<{ status: string; tabId: number }> = [];
     let pollRequests = 0;
 
     await trackActiveExtensionJob(storage, {
@@ -200,6 +206,9 @@ describe("active extension job poller", () => {
         sendReplaceImagesMessage: async () => {
           throw new Error("Should not replace without rendered metadata");
         },
+        setActionStatus: async (status, tabId) => {
+          actionStatuses.push({ status, tabId });
+        },
         setTabJobState: async (tabId, state) => {
           states.push({ state, tabId });
           return { ...state, updatedAt: "now" };
@@ -222,6 +231,7 @@ describe("active extension job poller", () => {
       },
       tabId: 7
     });
+    expect(actionStatuses).toEqual([{ status: "error", tabId: 7 }]);
   });
 
   it.each([
@@ -233,6 +243,7 @@ describe("active extension job poller", () => {
     async (_label, response) => {
       const storage = createStorage();
       const states: unknown[] = [];
+      const actionStatuses: Array<{ status: string; tabId: number }> = [];
       let pollRequests = 0;
 
       await trackActiveExtensionJob(storage, {
@@ -260,6 +271,9 @@ describe("active extension job poller", () => {
             throw response;
           }
           return response;
+        },
+        setActionStatus: async (status, tabId) => {
+          actionStatuses.push({ status, tabId });
         },
         setTabJobState: async (tabId, state) => {
           states.push({ state, tabId });
@@ -292,8 +306,79 @@ describe("active extension job poller", () => {
         },
         tabId: 7
       });
+      expect(actionStatuses).toEqual([{ status: "error", tabId: 7 }]);
     }
   );
+
+  it.each(["failed", "cancelled"] as const)(
+    "clears a %s job and marks its source-tab badge as failed",
+    async (status) => {
+      const storage = createStorage();
+      const actionStatuses: Array<{ status: string; tabId: number }> = [];
+
+      await trackActiveExtensionJob(storage, {
+        baseUrl: "http://hanako.test",
+        imageCount: 1,
+        jobId: "job_1",
+        replacements: [{ domIndex: 0 }],
+        tabId: 7
+      });
+
+      await pollActiveExtensionJobsOnce({
+        pollJobOnce: async () => ({
+          job: { id: "job_1", status }
+        }),
+        setActionStatus: async (actionStatus, tabId) => {
+          actionStatuses.push({ status: actionStatus, tabId });
+        },
+        setTabJobState: async (_tabId, state) => ({
+          ...state,
+          updatedAt: "now"
+        }),
+        storage
+      });
+
+      expect(actionStatuses).toEqual([{ status: "error", tabId: 7 }]);
+      await expect(getActiveExtensionJobs(storage)).resolves.toHaveLength(0);
+    }
+  );
+
+  it("clears a terminal job even when its tab badge cannot be updated", async () => {
+    const storage = createStorage();
+
+    await trackActiveExtensionJob(storage, {
+      baseUrl: "http://hanako.test",
+      imageCount: 1,
+      jobId: "job_1",
+      replacements: [{ domIndex: 0 }],
+      tabId: 7
+    });
+
+    await expect(
+      pollActiveExtensionJobsOnce({
+        executeContentScript: async () => undefined,
+        pollJobOnce: async () => ({
+          job: { id: "job_1", status: "completed" },
+          pages: [{ id: "page_1", renderedAssetId: "asset_1" }]
+        }),
+        sendReplaceImagesMessage: async () => ({
+          applied: 1,
+          failed: 0,
+          ok: true
+        }),
+        setActionStatus: async () => {
+          throw new Error("No tab with id: 7");
+        },
+        setTabJobState: async (_tabId, state) => ({
+          ...state,
+          updatedAt: "now"
+        }),
+        storage
+      })
+    ).rejects.toThrow("No tab with id: 7");
+
+    await expect(getActiveExtensionJobs(storage)).resolves.toHaveLength(0);
+  });
 
   it("leaves a genuinely active job untouched after a temporary server error", async () => {
     const storage = createStorage();
@@ -361,6 +446,7 @@ describe("active extension job poller", () => {
         failed: 0,
         ok: true
       }),
+      setActionStatus: async () => undefined,
       setTabJobState: async (_tabId, state) => ({
         ...state,
         updatedAt: "now"

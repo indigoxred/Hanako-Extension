@@ -1,4 +1,8 @@
 import {
+  setActionStatus as setBrowserActionStatus,
+  type ActionStatus
+} from "./action-status.js";
+import {
   createRenderedPageUrl,
   describeJobPhase,
   pollJobOnce as defaultPollJobOnce,
@@ -59,6 +63,7 @@ export interface PollActiveExtensionJobsDependencies {
     tabId: number,
     input: ReplaceImagesMessageInput
   ) => Promise<ReplaceImagesResponse>;
+  setActionStatus?: (status: ActionStatus, tabId: number) => Promise<void>;
   setTabJobState?: (
     tabId: number,
     state: Omit<StoredJobState, "updatedAt">
@@ -123,6 +128,7 @@ export async function pollActiveExtensionJobsOnce({
   executeContentScript = defaultExecuteContentScript,
   pollJobOnce = defaultPollJobOnce,
   sendReplaceImagesMessage = defaultSendReplaceImagesMessage,
+  setActionStatus = defaultSetActionStatus,
   setTabJobState = defaultSetTabJobState,
   storage = chrome.storage.local
 }: PollActiveExtensionJobsDependencies = {}): Promise<{ polled: number }> {
@@ -134,6 +140,7 @@ export async function pollActiveExtensionJobsOnce({
       job,
       pollJobOnce,
       sendReplaceImagesMessage,
+      setActionStatus,
       setTabJobState,
       storage
     });
@@ -200,6 +207,7 @@ async function pollActiveExtensionJob(input: {
     tabId: number,
     replacementInput: ReplaceImagesMessageInput
   ) => Promise<ReplaceImagesResponse>;
+  setActionStatus: (status: ActionStatus, tabId: number) => Promise<void>;
   setTabJobState: (
     tabId: number,
     state: Omit<StoredJobState, "updatedAt">
@@ -225,12 +233,18 @@ async function pollActiveExtensionJob(input: {
   }
 
   if (detail.job.status === "failed" || detail.job.status === "cancelled") {
-    await clearActiveExtensionJob(input.storage, job.id);
-    await input.setTabJobState(job.tabId, {
-      jobId: job.jobId,
-      message: detail.error?.message ?? "Hanako job failed",
-      phase: "failed",
-      status: "failed"
+    await finishActiveJob({
+      actionStatus: "error",
+      job,
+      setActionStatus: input.setActionStatus,
+      setTabJobState: input.setTabJobState,
+      state: {
+        jobId: job.jobId,
+        message: detail.error?.message ?? "Hanako job failed",
+        phase: "failed",
+        status: "failed"
+      },
+      storage: input.storage
     });
     return;
   }
@@ -246,33 +260,62 @@ async function pollActiveExtensionJob(input: {
     return;
   }
 
-  let delivery: Awaited<ReturnType<typeof attemptRenderedPageDelivery>>;
-
-  try {
-    delivery = await attemptRenderedPageDelivery(job, detail, {
-      executeContentScript: input.executeContentScript,
-      sendReplaceImagesMessage: input.sendReplaceImagesMessage
-    });
-  } finally {
-    await clearActiveExtensionJob(input.storage, job.id);
-  }
+  const delivery = await attemptRenderedPageDelivery(job, detail, {
+    executeContentScript: input.executeContentScript,
+    sendReplaceImagesMessage: input.sendReplaceImagesMessage
+  });
 
   if (delivery.delivered) {
-    await input.setTabJobState(job.tabId, {
-      jobId: job.jobId,
-      message: `Replaced ${delivery.replacementCount} image${delivery.replacementCount === 1 ? "" : "s"}`,
-      phase: "completed",
-      status: "completed"
+    await finishActiveJob({
+      actionStatus: "success",
+      job,
+      setActionStatus: input.setActionStatus,
+      setTabJobState: input.setTabJobState,
+      state: {
+        jobId: job.jobId,
+        message: `Replaced ${delivery.replacementCount} image${delivery.replacementCount === 1 ? "" : "s"}`,
+        phase: "completed",
+        status: "completed"
+      },
+      storage: input.storage
     });
     return;
   }
 
-  await input.setTabJobState(job.tabId, {
-    jobId: job.jobId,
-    message: RENDERED_PAGE_DELIVERY_FAILED_MESSAGE,
-    phase: "failed",
-    status: "failed"
+  await finishActiveJob({
+    actionStatus: "error",
+    job,
+    setActionStatus: input.setActionStatus,
+    setTabJobState: input.setTabJobState,
+    state: {
+      jobId: job.jobId,
+      message: RENDERED_PAGE_DELIVERY_FAILED_MESSAGE,
+      phase: "failed",
+      status: "failed"
+    },
+    storage: input.storage
   });
+}
+
+async function finishActiveJob(input: {
+  actionStatus: "error" | "success";
+  job: ActiveExtensionJob;
+  setActionStatus: (status: ActionStatus, tabId: number) => Promise<void>;
+  setTabJobState: (
+    tabId: number,
+    state: Omit<StoredJobState, "updatedAt">
+  ) => Promise<StoredJobState>;
+  state: Omit<StoredJobState, "updatedAt">;
+  storage: JobStateStorageArea;
+}): Promise<void> {
+  try {
+    await Promise.all([
+      input.setTabJobState(input.job.tabId, input.state),
+      input.setActionStatus(input.actionStatus, input.job.tabId)
+    ]);
+  } finally {
+    await clearActiveExtensionJob(input.storage, input.job.id);
+  }
 }
 
 export async function attemptRenderedPageDelivery(
@@ -378,6 +421,13 @@ async function defaultSetTabJobState(
   state: Omit<StoredJobState, "updatedAt">
 ): Promise<StoredJobState> {
   return setBrowserTabJobState(chrome.storage.local, tabId, state);
+}
+
+async function defaultSetActionStatus(
+  status: ActionStatus,
+  tabId: number
+): Promise<void> {
+  await setBrowserActionStatus(chrome.action, status, tabId);
 }
 
 function hasBrowserJobStorage(): boolean {

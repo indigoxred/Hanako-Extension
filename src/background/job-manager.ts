@@ -58,7 +58,8 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
   const inFlight = new Map<string, Promise<unknown>>();
   const setActionStatus =
     dependencies.setActionStatus ??
-    ((status: ActionStatus) => setBrowserActionStatus(chrome.action, status));
+    ((status: ActionStatus, tabId?: number) =>
+      setBrowserActionStatus(chrome.action, status, tabId));
   const updateQueueBadge =
     dependencies.updateQueueBadge ??
     ((count: number) => updateBrowserQueueBadge(chrome.action, count));
@@ -199,7 +200,11 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
           error: errorMessage(error, "Translation failed"),
           ok: false as const
         }));
-        await setActionStatus(actionStatusFromTranslationResult(result), tabId);
+        const finalActionStatus = actionStatusFromTranslationResult(result);
+
+        if (finalActionStatus) {
+          await setActionStatus(finalActionStatus, tabId);
+        }
         return result;
       }),
     translateContextMenuImage: (context: ContextMenuImageContext) =>
@@ -231,10 +236,11 @@ export function createJobManager(dependencies: JobManagerDependencies = {}) {
             context,
             contextJobStateFromResult(result)
           );
-          await setActionStatus(
-            actionStatusFromTranslationResult(result),
-            context.tabId
-          );
+          const finalActionStatus = actionStatusFromTranslationResult(result);
+
+          if (finalActionStatus) {
+            await setActionStatus(finalActionStatus, context.tabId);
+          }
           return result;
         }
       )
@@ -272,12 +278,16 @@ function errorMessage(error: unknown, fallback: string): string {
 
 function actionStatusFromTranslationResult(
   result: TranslateActiveTabResult | ContextMenuTranslationResult
-): ActionStatus {
+): ActionStatus | undefined {
   if (!result.ok) {
     return "error";
   }
 
-  return result.status === "timeout" ? "running" : "success";
+  if (result.status === "timeout") {
+    return undefined;
+  }
+
+  return "success";
 }
 
 function contextJobStateFromResult(
