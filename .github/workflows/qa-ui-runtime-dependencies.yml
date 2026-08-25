@@ -21,8 +21,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.6.0'
-          cache: npm
-          cache-dependency-path: qa-ui-deps/package-lock.json
 
       - name: Install exact public dependencies
         working-directory: qa-ui-deps
