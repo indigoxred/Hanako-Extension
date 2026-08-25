@@ -1,0 +1,58 @@
+name: Temporary Ui Runtime Dependency Export
+
+on:
+  push:
+    branches:
+      - qa/ui-runtime-dependencies-20260826
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.6.0'
+          cache: npm
+          cache-dependency-path: qa-ui-deps/package-lock.json
+
+      - name: Install exact public dependencies
+        working-directory: qa-ui-deps
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version | tee node-version.txt
+          npm --version | tee npm-version.txt
+          npm install --no-audit --no-fund 2>&1 | tee npm-install.log
+          npm ls --all --json > npm-tree.json
+          npm ls --depth=0 | tee npm-top-level.txt
+
+      - name: Package dependency tree
+        working-directory: qa-ui-deps
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf ui-runtime-dependencies-node24-linux-x64.tgz \
+            node_modules package.json package-lock.json \
+            node-version.txt npm-version.txt npm-install.log npm-tree.json npm-top-level.txt
+          sha256sum ui-runtime-dependencies-node24-linux-x64.tgz > SHA256SUMS
+          du -h ui-runtime-dependencies-node24-linux-x64.tgz node_modules | tee sizes.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-runtime-dependencies-node24-linux-x64
+          path: |
+            qa-ui-deps/ui-runtime-dependencies-node24-linux-x64.tgz
+            qa-ui-deps/SHA256SUMS
+            qa-ui-deps/sizes.txt
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
