@@ -1,4 +1,4 @@
-name: Temporary Ui Private Action Access Test
+name: Temporary Ui GHCR Image Probe
 
 on:
   push:
@@ -7,21 +7,50 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  access-test:
+  probe:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - name: Invoke temporary private Ui composite action
-        uses: indigoxred/ui/qa-export-action@qa/pr27-pr28-runtime-export-20260826
-      - name: Verify action result
+      - name: Probe anonymous and repository-token image access
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          cat "${RUNNER_TEMP}/private-ui-action-status.txt"
-          grep -Fx 'private_ui_action_available=true' "${RUNNER_TEMP}/private-ui-action-status.txt"
+          candidates=(
+            ghcr.io/indigoxred/ui:sha-bbb7fea
+            ghcr.io/indigoxred/ui:sha-bbb7fea41d15d9861ef2e6aabf36393f8c98adb5
+            ghcr.io/indigoxred/ui:sha-bd21b26
+            ghcr.io/indigoxred/ui:sha-bd21b2674ef8c2b995200299b4b3d327c60c8a1f
+            ghcr.io/indigoxred/ui:main
+            ghcr.io/indigoxred/ui:latest
+          )
+          : > image-probe.txt
+          for image in "${candidates[@]}"; do
+            if docker manifest inspect "$image" >/dev/null 2>&1; then
+              echo "$image anonymous=available" | tee -a image-probe.txt
+            else
+              echo "$image anonymous=unavailable" | tee -a image-probe.txt
+            fi
+          done
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin >/dev/null 2>&1 || true
+          for image in "${candidates[@]}"; do
+            if docker manifest inspect "$image" >/dev/null 2>&1; then
+              echo "$image token=available" | tee -a image-probe.txt
+            else
+              echo "$image token=unavailable" | tee -a image-probe.txt
+            fi
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-ghcr-image-probe
+          path: image-probe.txt
+          retention-days: 1
+          if-no-files-found: error
