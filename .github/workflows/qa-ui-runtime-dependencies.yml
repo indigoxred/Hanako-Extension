@@ -1,4 +1,4 @@
-name: Temporary Ui Runtime Dependency Export
+name: Temporary Ui Private Action Access Test
 
 on:
   push:
@@ -12,58 +12,16 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  export:
+  access-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
-      - name: Check repository-scoped token access to private Ui source
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          status="$({ curl -sS -o /dev/null -w '%{http_code}' \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H 'Accept: application/vnd.github+json' \
-            'https://api.github.com/repos/indigoxred/ui/contents/README.md?ref=bd21b2674ef8c2b995200299b4b3d327c60c8a1f'; } || true)"
-          echo "private_ui_contents_status=${status}"
-          test "${status}" = "200"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24.6.0'
-
-      - name: Install exact public dependencies
-        working-directory: qa-ui-deps
+      - name: Invoke temporary private Ui composite action
+        uses: indigoxred/ui/qa-export-action@qa/pr27-pr28-runtime-export-20260826
+      - name: Verify action result
         shell: bash
         run: |
           set -euo pipefail
-          node --version | tee node-version.txt
-          npm --version | tee npm-version.txt
-          npm install --no-audit --no-fund 2>&1 | tee npm-install.log
-          npm ls --all --json > npm-tree.json
-          npm ls --depth=0 | tee npm-top-level.txt
-
-      - name: Package dependency tree
-        working-directory: qa-ui-deps
-        shell: bash
-        run: |
-          set -euo pipefail
-          tar -czf ui-runtime-dependencies-node24-linux-x64.tgz \
-            node_modules package.json package-lock.json \
-            node-version.txt npm-version.txt npm-install.log npm-tree.json npm-top-level.txt
-          sha256sum ui-runtime-dependencies-node24-linux-x64.tgz > SHA256SUMS
-          du -h ui-runtime-dependencies-node24-linux-x64.tgz node_modules | tee sizes.txt
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ui-runtime-dependencies-node24-linux-x64
-          path: |
-            qa-ui-deps/ui-runtime-dependencies-node24-linux-x64.tgz
-            qa-ui-deps/SHA256SUMS
-            qa-ui-deps/sizes.txt
-          compression-level: 0
-          retention-days: 1
-          if-no-files-found: error
+          cat "${RUNNER_TEMP}/private-ui-action-status.txt"
+          grep -Fx 'private_ui_action_available=true' "${RUNNER_TEMP}/private-ui-action-status.txt"
