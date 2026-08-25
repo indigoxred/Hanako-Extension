@@ -18,6 +18,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check repository-scoped token access to private Ui source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status="$({ curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'Accept: application/vnd.github+json' \
+            'https://api.github.com/repos/indigoxred/ui/contents/README.md?ref=bd21b2674ef8c2b995200299b4b3d327c60c8a1f'; } || true)"
+          echo "private_ui_contents_status=${status}"
+          test "${status}" = "200"
+
       - uses: actions/setup-node@v4
         with:
           node-version: '24.6.0'
