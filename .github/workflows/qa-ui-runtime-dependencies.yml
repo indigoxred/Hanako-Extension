@@ -1,4 +1,4 @@
-name: Temporary Ui GHCR Image Probe
+name: Temporary Ui Exact Image Export
 
 on:
   push:
@@ -13,44 +13,51 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  probe:
+  export:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: baseline
+            image: ghcr.io/indigoxred/ui:sha-bbb7fea
+            expected_sha: bbb7fea41d15d9861ef2e6aabf36393f8c98adb5
+          - variant: current
+            image: ghcr.io/indigoxred/ui:sha-bd21b26
+            expected_sha: bd21b2674ef8c2b995200299b4b3d327c60c8a1f
+
     steps:
-      - name: Probe anonymous and repository-token image access
+      - name: Pull exact image
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          candidates=(
-            ghcr.io/indigoxred/ui:sha-bbb7fea
-            ghcr.io/indigoxred/ui:sha-bbb7fea41d15d9861ef2e6aabf36393f8c98adb5
-            ghcr.io/indigoxred/ui:sha-bd21b26
-            ghcr.io/indigoxred/ui:sha-bd21b2674ef8c2b995200299b4b3d327c60c8a1f
-            ghcr.io/indigoxred/ui:main
-            ghcr.io/indigoxred/ui:latest
-          )
-          : > image-probe.txt
-          for image in "${candidates[@]}"; do
-            if docker manifest inspect "$image" >/dev/null 2>&1; then
-              echo "$image anonymous=available" | tee -a image-probe.txt
-            else
-              echo "$image anonymous=unavailable" | tee -a image-probe.txt
-            fi
-          done
-          echo "$GH_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin >/dev/null 2>&1 || true
-          for image in "${candidates[@]}"; do
-            if docker manifest inspect "$image" >/dev/null 2>&1; then
-              echo "$image token=available" | tee -a image-probe.txt
-            else
-              echo "$image token=unavailable" | tee -a image-probe.txt
-            fi
-          done
+          mkdir -p export
+          docker pull "${{ matrix.image }}" 2>&1 | tee export/pull.log
+          docker image inspect "${{ matrix.image }}" > export/image-inspect.json
+          docker image inspect --format '{{json .Config.Labels}}' "${{ matrix.image }}" > export/image-labels.json
+          docker image inspect --format '{{.Id}}' "${{ matrix.image }}" | tee export/image-id.txt
+          docker image inspect --format '{{.RepoDigests}}' "${{ matrix.image }}" | tee export/repo-digests.txt
+          {
+            echo "variant=${{ matrix.variant }}"
+            echo "expected_commit=${{ matrix.expected_sha }}"
+            echo "source_image=${{ matrix.image }}"
+            echo "runner=$(uname -a)"
+            echo "docker=$(docker --version)"
+          } > export/environment.txt
+
+      - name: Save exact image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker save "${{ matrix.image }}" | gzip -1 > "export/ui-${{ matrix.variant }}.docker.tar.gz"
+          sha256sum export/* > export/SHA256SUMS
+          du -h export/* | sort -h > export/file-sizes.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ui-ghcr-image-probe
-          path: image-probe.txt
+          name: ui-exact-${{ matrix.variant }}-${{ matrix.expected_sha }}
+          path: export
+          compression-level: 0
           retention-days: 1
           if-no-files-found: error
