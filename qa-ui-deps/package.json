@@ -1,0 +1,18 @@
+{
+  "name": "ui-runtime-dependency-export",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@vitejs/plugin-react": "5.0.0",
+    "cheerio": "1.1.2",
+    "express": "5.1.0",
+    "jszip": "3.10.1",
+    "kuromoji": "0.1.2",
+    "multer": "2.0.2",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "typescript": "5.8.3",
+    "vite": "7.1.3"
+  }
+}
